@@ -3,6 +3,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PreviewModal } from "../PreviewModal";
 import {
+  PreviewSourceContext,
+  type PreviewSource,
+} from "../../_context/TheaterContext";
+import {
   showtimeSchema,
   type Preview,
   type Entry,
@@ -53,23 +57,62 @@ const preview: Preview = {
   },
 };
 
-function render(value: Preview | null, failure: string | null = null) {
+function render(
+  value: Preview | null,
+  failure: string | null = null,
+  source: Partial<PreviewSource> = {},
+) {
   return renderToStaticMarkup(
-    createElement(PreviewModal, {
-      preview: value,
-      failure,
-      busy: false,
-      error: "",
-      outcomeUnknown: false,
-      onClose() {},
-      onConfirm: async () => {},
-      onReview: async () => value!,
-    }),
+    createElement(
+      PreviewSourceContext.Provider,
+      {
+        value: {
+          preview: value,
+          failure,
+          busy: false,
+          error: "",
+          outcomeUnknown: false,
+          onClose() {},
+          onConfirm: async () => {},
+          onReview: async () => value!,
+          ...source,
+        } satisfies PreviewSource,
+      },
+      createElement(PreviewModal),
+    ),
   );
 }
 // #endregion
 
 // #region Review rendering and submission controls
+
+test("closed preview renders nothing through the source context", () => {
+  expect(render(null)).toBe("");
+});
+
+test("busy source disables confirmation and closing", () => {
+  const html = render(preview, null, { busy: true });
+
+  expect(html).toMatch(/aria-label="Close preview"[^>]*disabled=""/);
+  expect(html).toMatch(/type="submit"[^>]*disabled=""[^>]*>Working…/);
+});
+
+test("unknown confirmation outcome keeps refresh guidance and locks edits", () => {
+  const html = render(preview, null, {
+    outcomeUnknown: true,
+    error: "Save outcome is unknown.",
+  });
+
+  expect(html).toContain("Save outcome is unknown.");
+  expect(html).toContain(
+    "Refresh the schedule to check whether changes were saved.",
+  );
+  expect(html).toMatch(
+    /aria-label="Auditorium for showtime 1"[^>]*disabled=""/,
+  );
+  expect(html).toMatch(/type="submit"[^>]*>Confirm 1 change/);
+  expect(html).toMatch(/type="button"[^>]*>Close<\/button>/);
+});
 
 test("compact preview uses navigation and renders only the selected entry's differences", () => {
   const unchanged = {

@@ -80,6 +80,8 @@ export async function readSnapshot(db: Database, theaterId: string) {
   return rows.map((row) => showtimeSchema.parse(row));
 }
 export async function readSchedule(db: Database, user: User, q: Filters) {
+  if (user.role !== "admin" && (q.movieStatus || q.sort === "movieStatus"))
+    throw new AppError(403, "Review status is admin-only.");
   if (q.theaterId !== "all") assertAccess(user, q.theaterId);
   const scope =
     q.theaterId !== "all"

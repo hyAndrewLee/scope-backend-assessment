@@ -5,18 +5,9 @@ import {
 } from "../../features/reconciliation/schemas";
 import { AppError } from "../errors";
 
-const headers = [
-  "movie_title",
-  "theater_name",
-  "auditorium",
-  "start_time",
-  "end_time",
-  "language",
-  "format",
-  "rating",
-  "last_updated",
-];
-export function parseCsv(bytes: Uint8Array): CsvRow[] {
+import { exactHeaders, validateHeaderMapping } from "./headers";
+
+function readCells(bytes: Uint8Array): string[][] {
   if (bytes.byteLength > 262144)
     throw new AppError(413, "CSV exceeds 256 KiB.");
   let cells: string[][];
@@ -40,17 +31,24 @@ export function parseCsv(bytes: Uint8Array): CsvRow[] {
       "Invalid CSV; use UTF-8, consistent columns, and at most 100 records.",
     );
   }
-  const supplied = cells.shift() ?? [];
-  if (
-    supplied.length !== headers.length ||
-    new Set(supplied).size !== headers.length ||
-    headers.some((h) => !supplied.includes(h)) ||
-    !cells.length
-  )
+  if (cells.length < 2)
     throw new AppError(
       400,
-      "Provide the nine documented headers exactly once and at least one record.",
+      "Provide a header and at least one schedule record.",
     );
+  return cells;
+}
+export function csvHeaders(bytes: Uint8Array) {
+  return readCells(bytes)[0]!;
+}
+export function parseCsv(bytes: Uint8Array, mapping?: string[]): CsvRow[] {
+  const cells = readCells(bytes);
+  const raw = cells.shift()!;
+  const supplied = mapping
+    ? validateHeaderMapping(raw, mapping)
+    : exactHeaders(raw);
+  if (!supplied)
+    throw new AppError(400, "Column names need AI matching or correction.");
   return cells.map((row, index) => {
     const data = Object.fromEntries(
       supplied.map((h, i) => [h, row[i]?.normalize("NFC").trim()]),

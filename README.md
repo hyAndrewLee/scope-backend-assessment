@@ -51,6 +51,12 @@ Schema setup and seeding are explicit, not startup behavior; seeding refuses pop
 - **Demo storage scope:** Raw uploaded CSV files are not retained; confirmed schedule records persist. Raw-file retention and import audit history are deferred beyond this demo.
 - **Evaluation coverage:** 37 golden CSV scenarios check expected reconciliation behavior and validation of model-shaped proposals. These deterministic evals test the surrounding safeguards, not live Gemini accuracy.
 
+## Frontend abstractions
+
+- **Providers own workflows:** `TheaterProvider` manages shared console state; `PreviewProvider` manages the review session. Components consume context directly instead of passing state through layout layers.
+- **Hooks separate concerns:** Theater hooks handle selection, queries, and mutations; preview hooks handle submission, navigation, matching, and field edits. TanStack Query owns server-state caching; mutations invalidate shared schedules.
+- **UI follows the screen:** The page composes header, toolbar, feedback, schedule, and modal. Preview sections render navigation, details, comparisons, and confirmation; reusable input/table components retain explicit props. Server services and shared Zod contracts remain the validation boundary.
+
 ## Code style
 
 Named `#region` / `#endregion` comments for large sections. ESLint enforces statement spacing; Prettier enforces formatting. Region boundaries remain a manual readability decision.

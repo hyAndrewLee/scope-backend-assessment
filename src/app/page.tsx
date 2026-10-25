@@ -22,17 +22,23 @@ import { displayLabel } from "~/features/reconciliation/display";
 import { ShowtimesTable } from "./_components/ShowtimesTable";
 
 type Edits = z.infer<typeof reviewSchema>["edits"];
+
 function message(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const body = z
       .object({ error: z.string() })
       .safeParse(error.response?.data);
+
     if (body.success) return body.data.error;
+
     return "We couldn’t load the data. Please try again.";
   }
+
   return error instanceof Error ? error.message : "Request failed.";
 }
+
 export default function Home() {
+  // #region Selection and import state
   const client = useQueryClient();
   const [userId, setUserId] = useState("");
   const [theaterId, setTheaterId] = useState("all");
@@ -44,6 +50,9 @@ export default function Home() {
   const [error, setError] = useState("");
   const [outcomeUnknown, setOutcomeUnknown] = useState(false);
   const headers = { "x-persona-id": userId, "x-reconciliation-request": "1" };
+  // #endregion
+
+  // #region User, theater, and schedule queries
   const users = useQuery({
     queryKey: ["users"],
     queryFn: async ({ signal }) =>
@@ -51,6 +60,7 @@ export default function Home() {
         .array()
         .parse((await axios.get<unknown>("/api/users", { signal })).data),
   });
+
   const user = users.data?.find((u) => u.id === userId);
   const theaters = useQuery({
     queryKey: ["theaters", userId],
@@ -62,6 +72,7 @@ export default function Home() {
           (await axios.get<unknown>("/api/theaters", { headers, signal })).data,
         ),
   });
+
   const schedule = useQuery({
     queryKey: ["schedule", userId, theaterId, debounced],
     enabled: !!user && !!theaters.data,
@@ -76,16 +87,21 @@ export default function Home() {
         ).data,
       ),
   });
+  // #endregion
+
+  // #region Import and schedule mutations
   const preview = token;
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ["schedule", userId] });
   };
+
   const upload = useMutation({
     mutationFn: async (file: File) => {
       if (file.size > 262144)
         throw new Error(
           "This file is too large. Choose a CSV file smaller than 256 KB.",
         );
+
       return previewSchema.parse(
         (
           await axios.post<unknown>(
@@ -109,6 +125,7 @@ export default function Home() {
     },
     onError: (failure) => setPreviewFailure(message(failure)),
   });
+
   const review = useMutation({
     mutationFn: async (edits: Edits) =>
       previewSchema.parse(
@@ -126,12 +143,13 @@ export default function Home() {
     },
     onError: (failure) => setError(message(failure)),
   });
+
   const confirm = useMutation({
-    mutationFn: async () =>
+    mutationFn: async (checked: Preview) =>
       (
         await axios.post<unknown>(
           `/api/theaters/${theaterId}/confirm`,
-          { preview: token, acknowledge: true },
+          { preview: checked, acknowledge: true },
           { headers },
         )
       ).data,
@@ -147,6 +165,7 @@ export default function Home() {
         !axios.isAxiosError(failure) ||
         !failure.response ||
         failure.response.status >= 500;
+
       setOutcomeUnknown(uncertain);
       setError(
         uncertain
@@ -155,6 +174,7 @@ export default function Home() {
       );
     },
   });
+
   const status = useMutation({
     mutationFn: async ({ url, value }: { url: string; value: string }) =>
       axios.patch(url, { status: value }, { headers }),
@@ -167,6 +187,7 @@ export default function Home() {
       await refresh();
     },
   });
+
   const clear = useMutation({
     mutationFn: async () =>
       axios.delete(`/api/theaters/${theaterId}/schedule`, {
@@ -180,15 +201,20 @@ export default function Home() {
     },
     onError: (failure) => setError(message(failure)),
   });
+  // #endregion
+
+  // #region Schedule view state and selection reset
   const busy =
     upload.isPending ||
     review.isPending ||
     confirm.isPending ||
     status.isPending ||
     clear.isPending;
+
   const isAdmin = user?.role === "admin";
   const data = schedule.data;
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / filters.pageSize));
+
   const resetSelection = (id: string) => {
     setUserId(id);
     setTheaterId("all");
@@ -199,7 +225,10 @@ export default function Home() {
     setNotice("");
     setOutcomeUnknown(false);
   };
+
   const options = data?.options;
+  // #endregion
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#1a0b2e] to-[#0f0720]">
       <div className="container mx-auto px-4 py-8">
@@ -366,6 +395,7 @@ export default function Home() {
                     ...value,
                     page: 1,
                   });
+
                   if (parsed.success) setFilters(parsed.data);
                   else setError("Check filter values and date order.");
                 }}
@@ -466,8 +496,20 @@ export default function Home() {
             if (outcomeUnknown) void refresh();
             setOutcomeUnknown(false);
           }}
-          onConfirm={() => confirm.mutate()}
-          onReview={(edits) => review.mutateAsync(edits).then(() => {})}
+          onConfirm={async (checked) => {
+            try {
+              await confirm.mutateAsync(checked);
+            } catch (failure) {
+              throw new Error(message(failure));
+            }
+          }}
+          onReview={async (edits) => {
+            try {
+              return await review.mutateAsync(edits);
+            } catch (failure) {
+              throw new Error(message(failure));
+            }
+          }}
         />
       </div>
     </main>

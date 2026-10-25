@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { z } from "zod";
+import { useForm } from "react-hook-form";
+import { submitPreview } from "~/features/reconciliation/submit-preview";
 import {
   fieldsSchema,
   movieStatusSchema,
@@ -14,7 +16,10 @@ import {
   displayLabel,
 } from "~/features/reconciliation/display";
 
+// #region Preview types and display helpers
+
 type Edits = z.infer<typeof reviewSchema>["edits"];
+
 interface Props {
   preview: Preview | null;
   failure: string | null;
@@ -22,9 +27,10 @@ interface Props {
   error: string;
   outcomeUnknown: boolean;
   onClose: () => void;
-  onConfirm: () => void;
-  onReview: (edits: Edits) => Promise<void>;
+  onConfirm: (preview: Preview) => Promise<void>;
+  onReview: (edits: Edits) => Promise<Preview>;
 }
+
 const fields = [
   "partnerTitle",
   "auditorium",
@@ -35,6 +41,7 @@ const fields = [
   "rating",
   "movieStatus",
 ] as const;
+
 type Field = (typeof fields)[number];
 const kindLabels = {
   add: "New",
@@ -43,6 +50,7 @@ const kindLabels = {
   unchanged: "Unchanged",
   ambiguous: "Needs review",
 };
+
 const kindColors = {
   add: "text-green-300",
   update: "text-amber-300",
@@ -50,16 +58,20 @@ const kindColors = {
   unchanged: "text-gray-500",
   ambiguous: "text-amber-300",
 };
+
 function fileValue(entry: Entry, field: Field) {
   if (field === "movieStatus") return undefined;
+
   return field === "partnerTitle"
     ? entry.original?.movieTitle
     : entry.original?.[field];
 }
+
 function formatValue(value: string | undefined, field?: Field) {
   if (!value) return "—";
   if (field === "startTime" || field === "endTime") {
     const date = new Date(value);
+
     return Number.isFinite(date.valueOf())
       ? date.toLocaleString(undefined, {
           timeZone: "UTC",
@@ -71,41 +83,96 @@ function formatValue(value: string | undefined, field?: Field) {
         })
       : value;
   }
+
   return displayLabel(value);
 }
+
+// #endregion
 
 export function PreviewModal({
   preview,
   failure,
-  busy,
+  busy: externalBusy,
   error,
   outcomeUnknown,
   onClose,
   onConfirm,
   onReview,
 }: Props) {
+  // #region Edit form and submission
   const dialog = useRef<HTMLDialogElement>(null);
-  const [edits, setEdits] = useState<Record<number, Edits[number]>>({});
+  const { watch, setValue, handleSubmit, setError, clearErrors, formState } =
+    useForm<{
+      edits: Record<number, Edits[number]>;
+    }>({ defaultValues: { edits: {} }, mode: "onSubmit" });
+
+  const busy = externalBusy || formState.isSubmitting;
+  const edits = watch("edits");
+  const setEdits = (value: Record<number, Edits[number]>) => {
+    setValue("edits", value);
+    clearErrors();
+  };
+
+  const submitting = useRef(false);
+  const submit = handleSubmit(async ({ edits }) => {
+    if (busy || submitting.current) return;
+    clearErrors();
+    if (!preview || failure) return;
+    if (outcomeUnknown) {
+      setError("root", {
+        message:
+          "Refresh the schedule to check whether changes were saved before trying again.",
+      });
+
+      return;
+    }
+
+    submitting.current = true;
+    try {
+      await submitPreview(preview, Object.values(edits), onReview, onConfirm);
+      setEdits({});
+    } catch (error) {
+      setError("root", {
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not save changes. Please try again.",
+      });
+    } finally {
+      submitting.current = false;
+    }
+  });
+  // #endregion
+
+  // #region Dialog lifecycle and display preferences
   const [selected, setSelected] = useState(0);
   const [showAllEntries, setShowAllEntries] = useState(
     () =>
       !!preview && preview.entries.every((entry) => entry.kind === "unchanged"),
   );
+
   const [showAllFields, setShowAllFields] = useState(false);
   const open = !!preview || !!failure;
+
   useEffect(() => {
     if (!open) return;
     dialog.current?.showModal();
     const previous = document.body.style.overflow;
+
     document.body.style.overflow = "hidden";
+
     return () => {
       document.body.style.overflow = previous;
     };
   }, [open]);
-  if (!open) return null;
 
+  if (!open) return null;
+  // #endregion
+
+  // #region Change counts and active entry
   const entries = preview?.entries ?? [];
   const counts = { add: 0, update: 0, archive: 0 };
+
   for (const [index, entry] of entries.entries()) {
     if (edits[index]?.excluded ?? entry.excluded) continue;
     const resolution = edits[index]?.resolution;
@@ -115,24 +182,31 @@ export function PreviewModal({
           ? "add"
           : "update"
         : entry.kind;
+
     if (kind === "add" || kind === "update" || kind === "archive")
       counts[kind]++;
   }
+
   const changes = counts.add + counts.update + counts.archive;
   const changedEntries = entries
     .map((entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry.kind !== "unchanged");
+
   const visibleEntries = showAllEntries
     ? entries.map((entry, index) => ({ entry, index }))
     : changedEntries;
+
   const active =
     visibleEntries.find(({ index }) => index === selected) ?? visibleEntries[0];
+
   const entry = active?.entry;
   const index = active?.index ?? 0;
+
   const editable =
     !!entry &&
     ((!!entry.after && ["add", "update", "unchanged"].includes(entry.kind)) ||
       (entry.kind === "ambiguous" && !!entry.original));
+
   const resolution = edits[index]?.resolution;
   const selectedMatch =
     resolution?.kind === "match"
@@ -140,6 +214,7 @@ export function PreviewModal({
           (row) => row.id === resolution.showtimeId,
         )
       : undefined;
+
   const formatEntry =
     entry && selectedMatch
       ? {
@@ -150,17 +225,23 @@ export function PreviewModal({
           },
         }
       : entry;
+
   const excluded = entry ? (edits[index]?.excluded ?? entry.excluded) : false;
   const hasEdits = Object.keys(edits).length > 0;
+  // #endregion
+
+  // #region Field values, compatibility, and editing
   const selectedRoom =
     edits[index]?.fields?.auditorium ??
     entry?.after?.auditorium ??
     entry?.original?.auditorium ??
     "";
+
   const formats =
     preview && formatEntry
       ? availablePreviewFormats(preview, formatEntry, selectedRoom)
       : [];
+
   const valueFor = (field: Field) =>
     edits[index]?.fields?.[field] ??
     (field === "movieStatus" && entry?.kind === "ambiguous" && selectedMatch
@@ -173,8 +254,10 @@ export function PreviewModal({
         ? fileValue(entry, field)
         : undefined) ??
     "";
+
   const baselineFor = (field: Field) =>
     entry?.before?.[field] ?? (entry ? fileValue(entry, field) : undefined);
+
   const visibleFields = fields.filter(
     (field) =>
       showAllFields ||
@@ -184,11 +267,13 @@ export function PreviewModal({
       baselineFor(field) !== valueFor(field) ||
       (entry?.original && fileValue(entry, field) !== valueFor(field)),
   );
+
   const updateField = (field: Field, value: string) => {
     if (!preview || !entry) return;
     if (field === "movieStatus" && entry.after) {
       const movieStatus = movieStatusSchema.parse(value);
       const next = { ...edits };
+
       entries.forEach((item, itemIndex) => {
         if (
           !item.after ||
@@ -203,29 +288,37 @@ export function PreviewModal({
         };
       });
       setEdits(next);
+
       return;
     }
+
     const nextFields = { ...edits[index]?.fields, [field]: value };
+
     if (field === "auditorium") {
       const allowed = availablePreviewFormats(
         preview,
         formatEntry ?? entry,
         value,
       );
+
       const current =
         nextFields.format ?? entry.after?.format ?? entry.original?.format;
+
       if (allowed.length && !allowed.includes(current!))
         nextFields.format = allowed[0];
     }
+
     setEdits({
       ...edits,
       [index]: { ...edits[index], index, fields: nextFields },
     });
   };
+
   const changeSelection = (next: number) => {
     setSelected(next);
     setShowAllFields(false);
   };
+  // #endregion
 
   return (
     <dialog
@@ -238,7 +331,11 @@ export function PreviewModal({
       aria-describedby="preview-description"
       className={`fixed inset-0 m-auto ${failure ? "h-auto" : "h-[90dvh] md:h-[min(80dvh,640px)]"} max-h-[860px] w-[96vw] max-w-5xl overflow-hidden rounded-xl border border-gray-700 bg-gray-900 p-0 text-gray-100 shadow-2xl backdrop:bg-black/70`}
     >
-      <div className="flex h-full min-h-0 flex-col">
+      <form
+        noValidate
+        onSubmit={submit}
+        className="flex h-full min-h-0 flex-col"
+      >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-gray-700 px-5 py-4">
           <div>
             <h2 id="preview-title" className="text-lg font-semibold text-white">
@@ -315,6 +412,7 @@ export function PreviewModal({
               )}
             </div>
             <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+              {/* #region Entry navigation */}
               <aside className="flex max-h-40 shrink-0 flex-col border-b border-gray-700 md:max-h-none md:w-56 md:border-r md:border-b-0">
                 <div className="flex shrink-0 gap-1 px-3 pt-3 pb-2 text-xs">
                   <button
@@ -347,6 +445,7 @@ export function PreviewModal({
                   {visibleEntries.map(({ entry: item, index: itemIndex }) => {
                     const row = item.after ?? item.before;
                     const leftOut = edits[itemIndex]?.excluded ?? item.excluded;
+
                     return (
                       <button
                         key={itemIndex}
@@ -377,6 +476,8 @@ export function PreviewModal({
                   })}
                 </nav>
               </aside>
+              {/* #endregion */}
+
               <section
                 id="preview-detail"
                 aria-labelledby="preview-entry-title"
@@ -442,6 +543,7 @@ export function PreviewModal({
                                     kind: "match",
                                     showtimeId: event.target.value.slice(6),
                                   };
+
                             setEdits({
                               ...edits,
                               [index]: { ...edits[index], index, resolution },
@@ -504,6 +606,8 @@ export function PreviewModal({
                         This showtime will be archived, not deleted.
                       </p>
                     )}
+
+                    {/* #region Field comparison and editing */}
                     <div className="mt-5 overflow-x-auto">
                       <table className="w-full min-w-[440px] table-fixed text-left text-sm">
                         <caption className="sr-only">
@@ -560,6 +664,7 @@ export function PreviewModal({
                             const changed = old !== value;
                             const dateField =
                               field === "startTime" || field === "endTime";
+
                             const options: readonly string[] | null =
                               field === "auditorium"
                                 ? (preview?.capabilities?.auditoriums.map(
@@ -574,7 +679,9 @@ export function PreviewModal({
                                       : field === "movieStatus"
                                         ? movieStatusSchema.options
                                         : null;
+
                             const controlClass = `w-full min-w-0 rounded border border-transparent px-2 py-1.5 text-sm outline-none hover:border-gray-600 focus:border-purple-400 focus:ring-1 focus:ring-purple-400 disabled:opacity-50 ${changed ? "bg-green-500/5 text-green-200" : "bg-transparent text-gray-200"}`;
+
                             return (
                               <tr
                                 key={field}
@@ -651,7 +758,11 @@ export function PreviewModal({
                                           }
                                           step={dateField ? 1 : undefined}
                                           value={
-                                            dateField && value
+                                            dateField &&
+                                            value &&
+                                            Number.isFinite(
+                                              new Date(value).valueOf(),
+                                            )
                                               ? new Date(value)
                                                   .toISOString()
                                                   .slice(0, 19)
@@ -665,10 +776,13 @@ export function PreviewModal({
                                                 field,
                                                 event.target.value,
                                               );
-                                            else if (event.target.value) {
+                                            else if (!event.target.value) {
+                                              updateField(field, "");
+                                            } else {
                                               const date = new Date(
                                                 `${event.target.value}Z`,
                                               );
+
                                               if (
                                                 Number.isFinite(date.valueOf())
                                               )
@@ -703,6 +817,8 @@ export function PreviewModal({
                         </tbody>
                       </table>
                     </div>
+                    {/* #endregion */}
+
                     {!visibleFields.length && entry.kind !== "archive" && (
                       <p className="py-4 text-sm text-gray-500">
                         These values match the current schedule.
@@ -760,10 +876,16 @@ export function PreviewModal({
           </>
         )}
 
+        {/* #region Validation feedback and confirmation */}
         <footer className="shrink-0 border-t border-gray-700 px-5 py-3">
-          {error && (
-            <p role="alert" className="mb-2 text-sm text-red-300">
-              {error}
+          {(error || formState.errors.root?.message) && (
+            <p
+              role="alert"
+              className="mb-2 max-h-32 overflow-auto text-sm whitespace-pre-line text-red-300"
+            >
+              {outcomeUnknown
+                ? error || formState.errors.root?.message
+                : formState.errors.root?.message || error}
             </p>
           )}
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -774,7 +896,7 @@ export function PreviewModal({
               {outcomeUnknown
                 ? "Refresh the schedule to check whether changes were saved."
                 : hasEdits
-                  ? "Edits not checked · Check edits before saving"
+                  ? "Edits will be validated when you confirm"
                   : failure
                     ? "No schedule changes made"
                     : counts.archive
@@ -792,18 +914,6 @@ export function PreviewModal({
                   >
                     Discard edits
                   </button>
-                  <button
-                    type="button"
-                    disabled={busy || outcomeUnknown}
-                    onClick={() => {
-                      void onReview(Object.values(edits))
-                        .then(() => setEdits({}))
-                        .catch(() => {});
-                    }}
-                    className="rounded-md border border-purple-500/50 px-3 py-2 text-xs text-purple-200 disabled:opacity-40"
-                  >
-                    Check edits
-                  </button>
                 </>
               )}
               <button
@@ -816,15 +926,8 @@ export function PreviewModal({
               </button>
               {!failure && (
                 <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    outcomeUnknown ||
-                    hasEdits ||
-                    !!preview?.blockers.length ||
-                    !changes
-                  }
-                  onClick={onConfirm}
+                  type="submit"
+                  disabled={busy || formState.isSubmitting}
                   className="rounded-md bg-purple-600 px-4 py-2 text-xs font-medium hover:bg-purple-500 disabled:opacity-40"
                 >
                   {busy
@@ -835,7 +938,8 @@ export function PreviewModal({
             </div>
           </div>
         </footer>
-      </div>
+        {/* #endregion */}
+      </form>
     </dialog>
   );
 }

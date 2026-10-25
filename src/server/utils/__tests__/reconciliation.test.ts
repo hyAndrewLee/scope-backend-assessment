@@ -71,6 +71,23 @@ test("exact unchanged schedules bypass AI; minor title spelling preserves identi
   expect(preview.entries[0]?.kind).toBe("unchanged");
   expect(preview.entries[0]?.after?.id).toBe(before.id);
 });
+test("an AI addition cannot replace an existing movie/start identity", () => {
+  const decision = {
+    ...match.decisions[0]!,
+    kind: "add" as const,
+    showtimeId: null,
+    movieId: before.movieId,
+  };
+  const preview = compilePreview(
+    [{ ...row, auditorium: "New Hall" }],
+    [before],
+    { decisions: [decision] },
+    metadata,
+  );
+  expect(preview.entries[0]?.kind).toBe("update");
+  expect(preview.entries[0]?.after?.id).toBe(before.id);
+});
+
 test("updates preserve identity and missing screenings archive across all dates", () => {
   const other = {
     ...before,

@@ -107,7 +107,7 @@ export function compilePreview(
     throw new AppError(502, "Model did not account for every CSV row.");
   const known = new Map(snapshot.map((s) => [s.id, s]));
   const catalog = new Map(snapshot.map((s) => [s.movieId, s.movieTitle]));
-  const newMovies = new Map<string, string>();
+  const newMovies = new Map<string, { id: string; title: string }>();
   const used = new Set<string>();
   const entries: Entry[] = [];
   for (const d of [...decisions].sort((a, b) => a.sourceRow - b.sourceRow)) {
@@ -130,8 +130,17 @@ export function compilePreview(
       continue;
     }
     const before =
-      d.kind === "match" && d.showtimeId ? known.get(d.showtimeId) : undefined;
-    if (d.kind === "match" && (!before || used.has(before.id)))
+      d.kind === "match" && d.showtimeId
+        ? known.get(d.showtimeId)
+        : d.kind === "add" && d.movieId
+          ? snapshot.find(
+              (s) =>
+                s.movieId === d.movieId &&
+                s.startTime === row.startTime &&
+                s.status !== "archived",
+            )
+          : undefined;
+    if ((d.kind === "match" && !before) || (before && used.has(before.id)))
       throw new AppError(
         502,
         "Model referenced an unknown or repeated screening.",
@@ -139,9 +148,11 @@ export function compilePreview(
     if (d.movieId && !catalog.has(d.movieId))
       throw new AppError(502, "Model referenced a foreign movie.");
     if (before) used.add(before.id);
-    const title =
+    const suggestedTitle =
       before?.movieTitle ??
       (d.movieId ? catalog.get(d.movieId)! : (d.title ?? row.movieTitle));
+    const title =
+      newMovies.get(nameKey(suggestedTitle))?.title ?? suggestedTitle;
     const canonicalId = [...catalog].find(
       ([, t]) => nameKey(t) === nameKey(title),
     )?.[0];
@@ -150,9 +161,9 @@ export function compilePreview(
     const movieId =
       before?.movieId ??
       d.movieId ??
-      newMovies.get(nameKey(title)) ??
+      newMovies.get(nameKey(title))?.id ??
       randomUUID();
-    newMovies.set(nameKey(title), movieId);
+    newMovies.set(nameKey(title), { id: movieId, title });
     const { movieTitle: _title, theaterName: _theater, ...sourceFields } = row;
     void _title;
     void _theater;

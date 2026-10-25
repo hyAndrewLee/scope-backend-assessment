@@ -20,6 +20,7 @@ import { FilterBar } from "./_components/FilterBar";
 import { PreviewModal } from "./_components/PreviewModal";
 import { displayLabel } from "~/features/reconciliation/display";
 import { ShowtimesTable } from "./_components/ShowtimesTable";
+import { refreshSchedule } from "~/features/reconciliation/cache";
 
 type Edits = z.infer<typeof reviewSchema>["edits"];
 
@@ -91,9 +92,7 @@ export default function Home() {
 
   // #region Import and schedule mutations
   const preview = token;
-  const refresh = async () => {
-    await client.invalidateQueries({ queryKey: ["schedule", userId] });
-  };
+  const refresh = () => refreshSchedule(client);
 
   const upload = useMutation({
     mutationFn: async (file: File) => {
@@ -124,6 +123,7 @@ export default function Home() {
       setNotice("");
     },
     onError: (failure) => setPreviewFailure(message(failure)),
+    onSettled: refresh,
   });
 
   const review = useMutation({
@@ -158,7 +158,6 @@ export default function Home() {
       setOutcomeUnknown(false);
       setError("");
       setNotice("Your schedule changes have been saved.");
-      await refresh();
     },
     onError: (failure) => {
       const uncertain =
@@ -173,6 +172,8 @@ export default function Home() {
           : message(failure),
       );
     },
+    // A lost response can still mean the transaction committed.
+    onSettled: refresh,
   });
 
   const status = useMutation({

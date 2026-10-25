@@ -3,7 +3,7 @@ import tseslint from "typescript-eslint";
 
 const compat = new FlatCompat({ baseDirectory: import.meta.dirname });
 const config = tseslint.config(
-  { ignores: [".next/**", "node_modules/**", ".scratch/**"] },
+  { ignores: [".next/**", "node_modules/**", ".scratch/**", "next-env.d.ts"] },
   ...compat.extends("next/core-web-vitals"),
   ...tseslint.configs.recommended,
 );

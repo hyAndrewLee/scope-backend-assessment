@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useDebounce } from "~/lib/hooks/useDebounce";
-import type { MovieStatus, Showtime, ShowtimeStatus, Theater } from "~/types/assessment";
+import type {
+  MovieStatus,
+  Showtime,
+  ShowtimeStatus,
+  Theater,
+} from "~/types/assessment";
 
-type SortField =
+export type SortField =
   | "movieTitle"
   | "startTime"
   | "endTime"
@@ -22,6 +25,11 @@ interface ShowtimesTableProps {
   statusOptions: readonly ShowtimeStatus[];
   onMovieStatusChange?: (showtimeId: string, status: MovieStatus) => void;
   onStatusChange?: (showtimeId: string, status: ShowtimeStatus) => void;
+  searchQuery: string;
+  sortField: SortField;
+  sortOrder: SortOrder;
+  onSearchChange: (value: string) => void;
+  onSortChange: (field: SortField, order: SortOrder) => void;
 }
 
 export function ShowtimesTable({
@@ -33,59 +41,19 @@ export function ShowtimesTable({
   statusOptions,
   onMovieStatusChange,
   onStatusChange,
+  searchQuery,
+  sortField,
+  sortOrder,
+  onSearchChange,
+  onSortChange,
 }: ShowtimesTableProps) {
-  const [sortField, setSortField] = useState<SortField>("startTime");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const debouncedSearchQuery = useDebounce(searchQuery, 300);
-
   const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortOrder("asc");
-    }
+    if (field === "movieStatus" && !isAdmin) return;
+    onSortChange(
+      field,
+      sortField === field && sortOrder === "asc" ? "desc" : "asc",
+    );
   };
-
-  const filteredShowtimes = showtimes.filter((st) =>
-    st.movieTitle.toLowerCase().includes(debouncedSearchQuery.toLowerCase()),
-  );
-
-  const getSortValue = (showtime: Showtime) => {
-    switch (sortField) {
-      case "theaterName":
-        return theatersById[showtime.theaterId]?.name ?? "";
-      case "movieStatus":
-        return showtime.movieStatus;
-      case "movieTitle":
-        return showtime.movieTitle;
-      case "startTime":
-        return new Date(showtime.startTime).getTime();
-      case "endTime":
-        return new Date(showtime.endTime).getTime();
-      case "lastUpdated":
-        return new Date(showtime.lastUpdated).getTime();
-      default:
-        return "";
-    }
-  };
-
-  const sortedShowtimes = [...filteredShowtimes].sort((a, b) => {
-    const aVal = getSortValue(a);
-    const bVal = getSortValue(b);
-
-    if (typeof aVal === "number" && typeof bVal === "number") {
-      return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
-    }
-
-    const aStr = String(aVal);
-    const bStr = String(bVal);
-    return sortOrder === "asc"
-      ? aStr.localeCompare(bStr)
-      : bStr.localeCompare(aStr);
-  });
 
   const formatDateTime = (date: string) => {
     return new Date(date).toLocaleString("en-US", {
@@ -97,7 +65,8 @@ export function ShowtimesTable({
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <span className="ml-1 text-gray-500">↕</span>;
+    if (sortField !== field)
+      return <span className="ml-1 text-gray-500">↕</span>;
     return <span className="ml-1">{sortOrder === "asc" ? "↑" : "↓"}</span>;
   };
 
@@ -110,14 +79,14 @@ export function ShowtimesTable({
           type="text"
           placeholder="Search by movie title..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
         />
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-700">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-800 text-xs uppercase text-gray-400">
+          <thead className="bg-gray-800 text-xs text-gray-400 uppercase">
             <tr>
               {showTheaterColumn && (
                 <th
@@ -165,7 +134,7 @@ export function ShowtimesTable({
             </tr>
           </thead>
           <tbody>
-            {sortedShowtimes.length === 0 ? (
+            {showtimes.length === 0 ? (
               <tr>
                 <td
                   colSpan={columnCount}
@@ -175,7 +144,7 @@ export function ShowtimesTable({
                 </td>
               </tr>
             ) : (
-              sortedShowtimes.map((showtime) => (
+              showtimes.map((showtime) => (
                 <tr
                   key={showtime.id}
                   className={`border-b border-gray-700 hover:bg-gray-800 ${
@@ -196,11 +165,11 @@ export function ShowtimesTable({
                         value={showtime.movieStatus}
                         onChange={(e) =>
                           onMovieStatusChange?.(
-                            showtime.id,
+                            showtime.movieId ?? showtime.id,
                             e.target.value as MovieStatus,
                           )
                         }
-                        className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
                       >
                         {movieStatusOptions.map((statusOption) => (
                           <option key={statusOption} value={statusOption}>
@@ -210,7 +179,7 @@ export function ShowtimesTable({
                       </select>
                     ) : (
                       <span className="rounded-full bg-gray-700 px-2 py-1 text-xs text-gray-200">
-                        {showtime.movieStatus}
+                        {showtime.movieStatus ?? "—"}
                       </span>
                     )}
                   </td>
@@ -226,12 +195,8 @@ export function ShowtimesTable({
                   <td className="px-4 py-3 text-gray-300">
                     {showtime.language}
                   </td>
-                  <td className="px-4 py-3 text-gray-300">
-                    {showtime.format}
-                  </td>
-                  <td className="px-4 py-3 text-gray-300">
-                    {showtime.rating}
-                  </td>
+                  <td className="px-4 py-3 text-gray-300">{showtime.format}</td>
+                  <td className="px-4 py-3 text-gray-300">{showtime.rating}</td>
                   <td className="px-4 py-3">
                     {isAdmin ? (
                       <select
@@ -242,7 +207,7 @@ export function ShowtimesTable({
                             e.target.value as ShowtimeStatus,
                           )
                         }
-                        className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
                       >
                         {statusOptions.map((statusOption) => (
                           <option key={statusOption} value={statusOption}>

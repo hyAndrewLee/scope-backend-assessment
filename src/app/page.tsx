@@ -18,6 +18,7 @@ import {
 import { FileUpload } from "./_components/FileUpload";
 import { FilterBar } from "./_components/FilterBar";
 import { PreviewModal } from "./_components/PreviewModal";
+import { displayLabel } from "~/features/reconciliation/display";
 import { ShowtimesTable } from "./_components/ShowtimesTable";
 
 type Edits = z.infer<typeof reviewSchema>["edits"];
@@ -27,7 +28,7 @@ function message(error: unknown): string {
       .object({ error: z.string() })
       .safeParse(error.response?.data);
     if (body.success) return body.data.error;
-    return "Server request failed. No fallback data was used.";
+    return "We couldn’t load the data. Please try again.";
   }
   return error instanceof Error ? error.message : "Request failed.";
 }
@@ -81,7 +82,7 @@ export default function Home() {
   };
   const upload = useMutation({
     mutationFn: async (file: File) => {
-      if (file.size > 262144) throw new Error("CSV exceeds 256 KiB.");
+      if (file.size > 262144) throw new Error("This file is too large. Choose a CSV file smaller than 256 KB.");
       return previewSchema.parse(
         (
           await axios.post<unknown>(
@@ -135,7 +136,7 @@ export default function Home() {
       setToken(null);
       setOutcomeUnknown(false);
       setError("");
-      setNotice("Changes saved to the hosted database.");
+      setNotice("Your schedule changes have been saved.");
       await refresh();
     },
     onError: (failure) => {
@@ -170,7 +171,7 @@ export default function Home() {
         data: { acknowledge: true },
       }),
     onSuccess: async () => {
-      setNotice("Schedule archived in the hosted database.");
+      setNotice("The showtimes have been archived. No records were deleted.");
       setError("");
       await refresh();
     },
@@ -210,11 +211,11 @@ export default function Home() {
           </div>
           <div className="w-full max-w-md rounded-lg border border-gray-700 bg-gray-900 p-4">
             <p className="text-xs text-gray-500 uppercase">
-              Demo persona · not authentication
+              Demo user · no sign-in required
             </p>
             <div className="mt-2 flex flex-col gap-3">
               <select
-                aria-label="Demo persona"
+                aria-label="Demo user"
                 value={userId}
                 onChange={(e) => resetSelection(e.target.value)}
                 disabled={busy || !!token || !!previewFailure}
@@ -223,7 +224,7 @@ export default function Home() {
                 <option value="">Select a user</option>
                 {users.data?.map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
-                    {candidate.name} ({candidate.role})
+                    {candidate.name} ({displayLabel(candidate.role)})
                   </option>
                 ))}
               </select>
@@ -234,7 +235,7 @@ export default function Home() {
                     <span
                       className={`rounded-full px-2 py-1 text-xs font-medium ${isAdmin ? "bg-purple-900 text-purple-200" : "bg-gray-700 text-gray-200"}`}
                     >
-                      {user.role}
+                      {displayLabel(user.role)}
                     </span>
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
@@ -262,7 +263,7 @@ export default function Home() {
                 htmlFor="theater"
                 className="text-xs font-semibold text-gray-400 uppercase"
               >
-                Theater Scope
+                Theater
               </label>
               <select
                 id="theater"
@@ -320,7 +321,7 @@ export default function Home() {
           </div>
           {!isAdmin && (
             <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-4 text-sm text-gray-400">
-              Read-only mode. Admin personas can upload CSVs and update status.
+              View-only access. Choose an administrator to upload files or change showtimes.
             </div>
           )}
           {(users.isFetching ||
@@ -344,7 +345,7 @@ export default function Home() {
           )}
           {!user ? (
             <p className="text-gray-400">
-              Select a demo persona to load the hosted schedule.
+              Choose a demo user above to view the schedule.
             </p>
           ) : theaters.data?.length === 0 ? (
             <div className="rounded-lg border border-gray-700 bg-gray-900 p-8 text-center text-gray-400">
@@ -442,8 +443,8 @@ export default function Home() {
           )}
         </fieldset>
         <p className="mt-4 text-xs text-gray-500">
-          Shared hosted schedules. Demo persona selection is not authentication.
-          Date filters use inclusive UTC days.
+          Changes are shared with everyone using this demo. Choosing a demo user is not a secure sign-in.
+          Date filters include the full selected days in UTC.
         </p>
         <PreviewModal
           key={previewFailure ?? (preview ? "preview" : "closed")}

@@ -1,5 +1,7 @@
 "use client";
 
+import { displayLabel } from "~/features/reconciliation/display";
+
 interface FilterBarProps {
   status: "active" | "inactive" | "archived" | "all";
   format: string;
@@ -110,7 +112,7 @@ export function FilterBar({
             <option value="">All Languages</option>
             {availableLanguages.map((l) => (
               <option key={l} value={l}>
-                {l}
+                {displayLabel(l)}
               </option>
             ))}
           </select>
@@ -127,7 +129,7 @@ export function FilterBar({
             <option value="">All Ratings</option>
             {availableRatings.map((r) => (
               <option key={r} value={r}>
-                {r}
+                {displayLabel(r)}
               </option>
             ))}
           </select>
@@ -146,7 +148,7 @@ export function FilterBar({
             <option value="">All Statuses</option>
             {availableMovieStatuses.map((statusOption) => (
               <option key={statusOption} value={statusOption}>
-                {statusOption}
+                {displayLabel(statusOption)}
               </option>
             ))}
           </select>

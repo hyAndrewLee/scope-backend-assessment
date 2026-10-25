@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { supportsProjection, validateAssignments } from "../auditoriums";
+import { availablePreviewFormats, displayLabel } from "../../../features/reconciliation/display";
 import {
   showtimeSchema,
   type Auditorium,
@@ -50,6 +51,19 @@ const preview: Preview = {
     },
   ],
 };
+test("preview dropdown formats respect both room and movie capabilities", () => {
+  const p: Preview = { ...preview, capabilities: { auditoriums: rooms, movies: [{ id: "m", supportedFormats: ["3D"] }] } };
+  const entry = p.entries[0]!;
+  expect(availablePreviewFormats(p, entry, "Room 1")).toEqual([]);
+  expect(availablePreviewFormats(p, entry, "Room 2")).toEqual(["3D"]);
+  expect(availablePreviewFormats(p, entry, "Unknown room")).toEqual([]);
+  expect(availablePreviewFormats({ ...p, capabilities: undefined }, entry, "Room 2")).toEqual([]);
+  const newMovie = { ...p, capabilities: { auditoriums: rooms, movies: [] } };
+  expect(availablePreviewFormats(newMovie, entry, "Room 2")).toEqual(["3D"]);
+  expect(displayLabel("EN")).toBe("English");
+  expect(displayLabel("needs-review")).toBe("Needs review");
+});
+
 test("both movie and auditorium must support the requested format; IMAX does not imply 3D", () => {
   expect(supportsProjection("3D", ["3D"], ["2D"])).toBe(false);
   expect(supportsProjection("2D", ["3D"], ["2D", "3D"])).toBe(false);

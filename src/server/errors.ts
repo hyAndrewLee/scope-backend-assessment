@@ -30,7 +30,7 @@ export function errorResponse(error: unknown) {
         ? "Check the supplied fields."
         : conflict
           ? "Saved data conflicts with this operation; refresh and review again."
-          : "Server unavailable. No fallback data was used.";
+          : "We couldn’t load or save your data. Please try again in a moment.";
   if (status === 500)
     console.error("request_failed", {
       name: error instanceof Error ? error.name : "UnknownError",

@@ -1,5 +1,6 @@
 import { createGoogle } from "@ai-sdk/google";
 import { generateText, Output } from "ai";
+import { z } from "zod";
 import {
   proposalSchema,
   type CsvRow,
@@ -8,6 +9,19 @@ import {
 import { getSettings } from "../../env.js";
 import { AppError } from "../errors";
 import type { readCapabilities } from "../services/auditoriums";
+
+// Keep provider JSON Schema simple; enforce all domain constraints after generation.
+export const aiProposalSchema = z.object({
+  decisions: z.array(z.object({
+    sourceRow: z.number(),
+    kind: z.enum(["match", "add", "ambiguous"]),
+    showtimeId: z.string().nullable(),
+    movieId: z.string().nullable(),
+    title: z.string().nullable(),
+    auditorium: z.string().nullable(),
+    reason: z.string(),
+  })),
+});
 
 export async function generateProposal(
   rows: CsvRow[],
@@ -45,7 +59,7 @@ For add, provide null showtimeId; reuse a known movieId when the movie exists, o
 For ambiguous, both IDs must be null; never guess destructively. Suggest a consistent auditorium spelling when appropriate.
 Unused title/auditorium suggestions are null. Explain every decision. Return no SQL or archive decisions; server computes archives.`,
       prompt,
-      output: Output.object({ schema: proposalSchema }),
+      output: Output.object({ schema: aiProposalSchema }),
       maxRetries: 0,
       maxOutputTokens: 12000,
       abortSignal: AbortSignal.any([signal, AbortSignal.timeout(45000)]),

@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
-import { generateProposal } from "../model";
+import { aiProposalSchema, generateProposal } from "../model";
+import { proposalSchema } from "../../../features/reconciliation/schemas";
 import { errorResponse } from "../../errors";
 
 test("missing AI configuration fails honestly without a provider call or fabricated preview", async () => {
@@ -27,6 +28,15 @@ test("missing AI configuration fails honestly without a provider call or fabrica
     }
   }
 });
+test("provider schema does not replace strict domain validation", () => {
+  const output = { decisions: [{
+    sourceRow: -1, kind: "match", showtimeId: "invalid id", movieId: null,
+    title: null, auditorium: null, reason: "Candidate match",
+  }] };
+  expect(aiProposalSchema.safeParse(output).success).toBe(true);
+  expect(proposalSchema.safeParse(output).success).toBe(false);
+});
+
 test("unexpected errors never expose provider messages or credentials", async () => {
   const response = errorResponse(new Error("secret-sentinel"));
   expect(response.status).toBe(500);

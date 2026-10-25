@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { z } from "zod";
-import type { Preview, reviewSchema } from "~/features/reconciliation/schemas";
+import { fieldsSchema, type Preview, type reviewSchema } from "~/features/reconciliation/schemas";
+import { availablePreviewFormats, displayLabel } from "~/features/reconciliation/display";
 
 type Edits = z.infer<typeof reviewSchema>["edits"];
 interface Props {
@@ -84,7 +85,7 @@ export function PreviewModal({
               <p role="status" className="mb-4 text-gray-300">
                 {changes === 0 && !preview?.blockers.length
                   ? "No changes detected."
-                  : `${changes} proposed changes. Missing screenings will be archived, not deleted.`}
+                  : `${changes} changes to review. Showtimes missing from your file will be archived, not deleted.`}
               </p>
               {!!preview?.blockers.length && (
                 <ul
@@ -104,7 +105,7 @@ export function PreviewModal({
                   <ul>
                     {preview.headerMappings.map((m) => (
                       <li key={m.from}>
-                        {m.from} becomes {m.to}
+                        “{m.from}” → {displayLabel(m.to)}
                       </li>
                     ))}
                   </ul>
@@ -122,23 +123,27 @@ export function PreviewModal({
                   </ul>
                 </details>
               )}
-              <datalist id="auditorium-options">
-                {preview?.capabilities?.auditoriums.map((room) => (
-                  <option key={room.id} value={room.name}>
-                    {room.supportedFormats.join(", ")}
-                  </option>
-                ))}
-              </datalist>
               <p className="mb-4 text-sm text-gray-400">
-                Edit proposed values or exclude a proposal, then validate edits
-                before confirming. Movie identity and review status are
-                protected.
+                Review each change below. You can edit details or leave a change out,
+                then check your edits before saving. Existing movie records and
+                approval statuses will not be changed by this upload.
               </p>
               {preview?.entries.map((entry, index) => {
                 const editable =
                   !!entry.after &&
                   ["add", "update", "unchanged"].includes(entry.kind);
                 const original = entry.original;
+                const selectedRoom = edits[index]?.fields?.auditorium ?? entry.after?.auditorium ?? "";
+                const formats = availablePreviewFormats(preview, entry, selectedRoom);
+                const updateField = (field: typeof fields[number], value: string) => {
+                  const nextFields = { ...edits[index]?.fields, [field]: value };
+                  if (field === "auditorium") {
+                    const allowed = availablePreviewFormats(preview, entry, value);
+                    const current = nextFields.format ?? entry.after?.format;
+                    if (allowed.length && !allowed.includes(current!)) nextFields.format = allowed[0];
+                  }
+                  setEdits({ ...edits, [index]: { ...edits[index], index, fields: nextFields } });
+                };
                 return (
                   <section
                     key={index}
@@ -146,7 +151,7 @@ export function PreviewModal({
                   >
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                       <h3 className="font-semibold">
-                        {entry.kind.toUpperCase()} ·{" "}
+                        {displayLabel(entry.kind)} ·{" "}
                         {entry.after?.movieTitle ?? original?.movieTitle}
                       </h3>
                       <label className="text-sm text-gray-300">
@@ -165,7 +170,7 @@ export function PreviewModal({
                             })
                           }
                         />{" "}
-                        Exclude
+                        Leave out this change
                       </label>
                     </div>
                     <p className="mb-3 text-sm text-gray-400">{entry.reason}</p>
@@ -175,15 +180,15 @@ export function PreviewModal({
                         {preview.capabilities?.movies
                           .find((m) => m.id === entry.after?.movieId)
                           ?.supportedFormats.join(", ") ??
-                          "New movie: formats from included proposals"}
+                          "New movie: the format listed in your file"}
                       </p>
                     )}
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div className="font-semibold text-gray-400">
-                        Original CSV / saved screening
+                        From your file or current schedule
                       </div>
                       <div className="font-semibold text-purple-300">
-                        Proposed values
+                        After saving
                       </div>
                       {fields.map((field) => {
                         const old =
@@ -195,44 +200,56 @@ export function PreviewModal({
                           edits[index]?.fields?.[field] ??
                           entry.after?.[field] ??
                           "";
+                        const options: readonly string[] | null = field === "auditorium"
+                          ? (preview.capabilities?.auditoriums.map(room => room.name) ?? [])
+                          : field === "language" ? fieldsSchema.shape.language.options
+                          : field === "rating" ? fieldsSchema.shape.rating.options
+                          : field === "format" ? formats : null;
+                        const inputClass = `mt-1 w-full rounded border bg-gray-800 p-2 text-sm text-white ${old !== value ? "border-amber-600" : "border-gray-600"}`;
+                        const dateField = field === "startTime" || field === "endTime";
                         return (
                           <div key={field} className="contents">
                             <div className="break-words text-gray-400">
-                              <span className="block text-xs">{field}</span>
-                              {old ?? "—"}
+                              <span className="block text-xs">{displayLabel(field)}</span>
+                              {old ? (field === "startTime" || field === "endTime" ? new Date(old).toLocaleString(undefined, { timeZone: "UTC" }) : displayLabel(old)) : "—"}
                             </div>
                             {editable ? (
                               <label className="text-xs text-gray-400">
-                                {field}
-                                <input
-                                  aria-label={`${field} proposal ${index + 1}`}
-                                  value={value}
-                                  list={
-                                    field === "auditorium"
-                                      ? "auditorium-options"
-                                      : undefined
-                                  }
-                                  maxLength={256}
-                                  disabled={busy || outcomeUnknown}
-                                  onChange={(e) =>
-                                    setEdits({
-                                      ...edits,
-                                      [index]: {
-                                        ...edits[index],
-                                        index,
-                                        fields: {
-                                          ...edits[index]?.fields,
-                                          [field]: e.target.value,
-                                        },
-                                      },
-                                    })
-                                  }
-                                  className={`mt-1 w-full rounded border bg-gray-800 p-2 text-sm text-white ${old !== value ? "border-amber-600" : "border-gray-600"}`}
-                                />
+                                {displayLabel(field)}
+                                {options ? (
+                                  <select
+                                    aria-label={`${displayLabel(field)} for showtime ${index + 1}`}
+                                    value={options.includes(value) ? value : ""}
+                                    disabled={busy || outcomeUnknown || !options.length}
+                                    onChange={e => updateField(field, e.target.value)}
+                                    className={inputClass}
+                                  >
+                                    <option value="" disabled>{options.length ? "Choose an option" : "No compatible options"}</option>
+                                    {options.map(option => <option key={option} value={option}>{displayLabel(option)}</option>)}
+                                  </select>
+                                ) : (
+                                  <input
+                                    aria-label={`${displayLabel(field)} for showtime ${index + 1}`}
+                                    type={dateField ? "datetime-local" : "text"}
+                                    step={dateField ? 1 : undefined}
+                                    value={dateField ? new Date(value).toISOString().slice(0, 19) : value}
+                                    maxLength={256}
+                                    disabled={busy || outcomeUnknown}
+                                    onChange={e => {
+                                      if (dateField) {
+                                        if (e.target.value) updateField(field, new Date(`${e.target.value}Z`).toISOString());
+                                      } else updateField(field, e.target.value);
+                                    }}
+                                    className={inputClass}
+                                  />
+                                )}
+                                {field === "format" && !formats.length && (
+                                  <span className="mt-1 block text-amber-300">Choose a compatible auditorium or leave out this change.</span>
+                                )}
                               </label>
                             ) : (
                               <div className="text-gray-300">
-                                {entry.after?.[field] ?? "Unresolved"}
+                                {entry.after?.[field] ? displayLabel(entry.after[field]) : "Needs review"}
                               </div>
                             )}
                           </div>
@@ -241,14 +258,14 @@ export function PreviewModal({
                     </div>
                     {entry.kind === "archive" && (
                       <p className="mt-3 text-red-300">
-                        Saved status will become archived.
+                        This showtime will move to the archive. It will not be deleted.
                       </p>
                     )}
                   </section>
                 );
               })}
               <p className="text-xs text-gray-500">
-                Revision {preview?.revision} · {preview?.model}
+                Schedule version {preview?.revision} · All times shown in UTC
               </p>
             </>
           )}
@@ -278,7 +295,7 @@ export function PreviewModal({
                   }}
                   className="rounded-lg border border-purple-500 px-4 py-2"
                 >
-                  Validate edits
+                  Check edits
                 </button>
               </>
             )}

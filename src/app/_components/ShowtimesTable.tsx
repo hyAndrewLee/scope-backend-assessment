@@ -1,5 +1,7 @@
 "use client";
 
+import { displayLabel } from "~/features/reconciliation/display";
+
 import type {
   MovieStatus,
   Showtime,
@@ -173,13 +175,13 @@ export function ShowtimesTable({
                       >
                         {movieStatusOptions.map((statusOption) => (
                           <option key={statusOption} value={statusOption}>
-                            {statusOption}
+                            {displayLabel(statusOption)}
                           </option>
                         ))}
                       </select>
                     ) : (
                       <span className="rounded-full bg-gray-700 px-2 py-1 text-xs text-gray-200">
-                        {showtime.movieStatus ?? "—"}
+                        {showtime.movieStatus ? displayLabel(showtime.movieStatus) : "—"}
                       </span>
                     )}
                   </td>
@@ -193,10 +195,10 @@ export function ShowtimesTable({
                     {formatDateTime(showtime.endTime)}
                   </td>
                   <td className="px-4 py-3 text-gray-300">
-                    {showtime.language}
+                    {displayLabel(showtime.language)}
                   </td>
                   <td className="px-4 py-3 text-gray-300">{showtime.format}</td>
-                  <td className="px-4 py-3 text-gray-300">{showtime.rating}</td>
+                  <td className="px-4 py-3 text-gray-300">{displayLabel(showtime.rating)}</td>
                   <td className="px-4 py-3">
                     {isAdmin ? (
                       <select
@@ -211,7 +213,7 @@ export function ShowtimesTable({
                       >
                         {statusOptions.map((statusOption) => (
                           <option key={statusOption} value={statusOption}>
-                            {statusOption}
+                            {displayLabel(statusOption)}
                           </option>
                         ))}
                       </select>
@@ -225,7 +227,7 @@ export function ShowtimesTable({
                               : "bg-gray-700 text-gray-400"
                         }`}
                       >
-                        {showtime.status}
+                        {displayLabel(showtime.status)}
                       </span>
                     )}
                   </td>

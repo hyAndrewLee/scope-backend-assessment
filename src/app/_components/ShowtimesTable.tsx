@@ -72,7 +72,7 @@ export function ShowtimesTable({
     return <span className="ml-1">{sortOrder === "asc" ? "↑" : "↓"}</span>;
   };
 
-  const columnCount = 10 + (showTheaterColumn ? 1 : 0);
+  const columnCount = (isAdmin ? 10 : 7) + (showTheaterColumn ? 1 : 0);
 
   return (
     <div className="w-full">
@@ -104,13 +104,17 @@ export function ShowtimesTable({
               >
                 Movie Title <SortIcon field="movieTitle" />
               </th>
-              <th
-                className="cursor-pointer px-4 py-3 hover:bg-gray-700"
-                onClick={() => handleSort("movieStatus")}
-              >
-                Movie Status <SortIcon field="movieStatus" />
-              </th>
-              <th className="px-4 py-3">Auditorium</th>
+              {isAdmin && (
+                <>
+                  <th
+                    className="cursor-pointer px-4 py-3 hover:bg-gray-700"
+                    onClick={() => handleSort("movieStatus")}
+                  >
+                    Movie Status <SortIcon field="movieStatus" />
+                  </th>
+                  <th className="px-4 py-3">Auditorium</th>
+                </>
+              )}
               <th
                 className="cursor-pointer px-4 py-3 hover:bg-gray-700"
                 onClick={() => handleSort("startTime")}
@@ -126,7 +130,7 @@ export function ShowtimesTable({
               <th className="px-4 py-3">Language</th>
               <th className="px-4 py-3">Format</th>
               <th className="px-4 py-3">Rating</th>
-              <th className="px-4 py-3">Status</th>
+              {isAdmin && <th className="px-4 py-3">Status</th>}
               <th
                 className="cursor-pointer px-4 py-3 hover:bg-gray-700"
                 onClick={() => handleSort("lastUpdated")}
@@ -150,7 +154,9 @@ export function ShowtimesTable({
                 <tr
                   key={showtime.id}
                   className={`border-b border-gray-700 hover:bg-gray-800 ${
-                    showtime.status === "archived" ? "opacity-50" : ""
+                    isAdmin && showtime.status === "archived"
+                      ? "opacity-50"
+                      : ""
                   }`}
                 >
                   {showTheaterColumn && (
@@ -161,33 +167,31 @@ export function ShowtimesTable({
                   <td className="px-4 py-3 font-medium text-white">
                     {showtime.movieTitle}
                   </td>
-                  <td className="px-4 py-3 text-gray-300">
-                    {isAdmin ? (
-                      <select
-                        value={showtime.movieStatus}
-                        onChange={(e) =>
-                          onMovieStatusChange?.(
-                            showtime.movieId ?? showtime.id,
-                            e.target.value as MovieStatus,
-                          )
-                        }
-                        className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                      >
-                        {movieStatusOptions.map((statusOption) => (
-                          <option key={statusOption} value={statusOption}>
-                            {displayLabel(statusOption)}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="rounded-full bg-gray-700 px-2 py-1 text-xs text-gray-200">
-                        {showtime.movieStatus ? displayLabel(showtime.movieStatus) : "—"}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-300">
-                    {showtime.auditorium}
-                  </td>
+                  {isAdmin && (
+                    <>
+                      <td className="px-4 py-3 text-gray-300">
+                        <select
+                          value={showtime.movieStatus}
+                          onChange={(e) =>
+                            onMovieStatusChange?.(
+                              showtime.movieId ?? showtime.id,
+                              e.target.value as MovieStatus,
+                            )
+                          }
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                        >
+                          {movieStatusOptions.map((statusOption) => (
+                            <option key={statusOption} value={statusOption}>
+                              {displayLabel(statusOption)}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-3 text-gray-300">
+                        {showtime.auditorium}
+                      </td>
+                    </>
+                  )}
                   <td className="px-4 py-3 text-gray-300">
                     {formatDateTime(showtime.startTime)}
                   </td>
@@ -198,9 +202,11 @@ export function ShowtimesTable({
                     {displayLabel(showtime.language)}
                   </td>
                   <td className="px-4 py-3 text-gray-300">{showtime.format}</td>
-                  <td className="px-4 py-3 text-gray-300">{displayLabel(showtime.rating)}</td>
-                  <td className="px-4 py-3">
-                    {isAdmin ? (
+                  <td className="px-4 py-3 text-gray-300">
+                    {displayLabel(showtime.rating)}
+                  </td>
+                  {isAdmin && (
+                    <td className="px-4 py-3">
                       <select
                         value={showtime.status}
                         onChange={(e) =>
@@ -217,20 +223,8 @@ export function ShowtimesTable({
                           </option>
                         ))}
                       </select>
-                    ) : (
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-medium ${
-                          showtime.status === "active"
-                            ? "bg-green-900 text-green-300"
-                            : showtime.status === "inactive"
-                              ? "bg-amber-900 text-amber-300"
-                              : "bg-gray-700 text-gray-400"
-                        }`}
-                      >
-                        {displayLabel(showtime.status)}
-                      </span>
-                    )}
-                  </td>
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-gray-300">
                     {formatDateTime(showtime.lastUpdated)}
                   </td>

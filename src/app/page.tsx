@@ -82,7 +82,10 @@ export default function Home() {
   };
   const upload = useMutation({
     mutationFn: async (file: File) => {
-      if (file.size > 262144) throw new Error("This file is too large. Choose a CSV file smaller than 256 KB.");
+      if (file.size > 262144)
+        throw new Error(
+          "This file is too large. Choose a CSV file smaller than 256 KB.",
+        );
       return previewSchema.parse(
         (
           await axios.post<unknown>(
@@ -315,13 +318,14 @@ export default function Home() {
             </button>
             <div className="ml-auto text-sm text-gray-400">
               {data
-                ? `${data.activeCount} active · ${data.total} matching showtimes`
+                ? `${isAdmin ? `${data.activeCount} active · ` : ""}${data.total} matching showtimes`
                 : ""}
             </div>
           </div>
           {!isAdmin && (
             <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-4 text-sm text-gray-400">
-              View-only access. Choose an administrator to upload files or change showtimes.
+              View-only access. Choose an administrator to upload files or
+              change showtimes.
             </div>
           )}
           {(users.isFetching ||
@@ -354,6 +358,7 @@ export default function Home() {
           ) : (
             <>
               <FilterBar
+                isAdmin={!!isAdmin}
                 {...filters}
                 onFilterChange={(value) => {
                   const parsed = filtersSchema.safeParse({
@@ -443,8 +448,9 @@ export default function Home() {
           )}
         </fieldset>
         <p className="mt-4 text-xs text-gray-500">
-          Changes are shared with everyone using this demo. Choosing a demo user is not a secure sign-in.
-          Date filters include the full selected days in UTC.
+          Changes are shared with everyone using this demo. Choosing a demo user
+          is not a secure sign-in. Date filters include the full selected days
+          in UTC.
         </p>
         <PreviewModal
           key={previewFailure ?? (preview ? "preview" : "closed")}

@@ -3,6 +3,7 @@
 import { displayLabel } from "~/features/reconciliation/display";
 
 interface FilterBarProps {
+  isAdmin: boolean;
   status: "active" | "inactive" | "archived" | "all";
   format: string;
   language: string;
@@ -29,6 +30,7 @@ interface FilterBarProps {
 }
 
 export function FilterBar({
+  isAdmin,
   status,
   format,
   language,
@@ -60,29 +62,37 @@ export function FilterBar({
 
   return (
     <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-4">
-      <h3 className="mb-3 text-sm font-semibold uppercase text-gray-400">
+      <h3 className="mb-3 text-sm font-semibold text-gray-400 uppercase">
         Filters
       </h3>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* Status Filter */}
-        <div>
-          <label className="mb-1 block text-xs text-gray-400">Status</label>
-          <select
-            value={status}
-            onChange={(e) =>
-              handleChange(
-                "status",
-                e.target.value as "active" | "inactive" | "archived" | "all",
-              )
-            }
-            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          >
-            <option value="all">All</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="archived">Archived</option>
-          </select>
-        </div>
+        {isAdmin && (
+          <>
+            {/* Status Filter */}
+            <div>
+              <label className="mb-1 block text-xs text-gray-400">Status</label>
+              <select
+                value={status}
+                onChange={(e) =>
+                  handleChange(
+                    "status",
+                    e.target.value as
+                      | "active"
+                      | "inactive"
+                      | "archived"
+                      | "all",
+                  )
+                }
+                className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              >
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+          </>
+        )}
 
         {/* Format Filter */}
         <div>
@@ -90,7 +100,7 @@ export function FilterBar({
           <select
             value={format}
             onChange={(e) => handleChange("format", e.target.value)}
-            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
           >
             <option value="">All Formats</option>
             {availableFormats.map((f) => (
@@ -107,7 +117,7 @@ export function FilterBar({
           <select
             value={language}
             onChange={(e) => handleChange("language", e.target.value)}
-            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
           >
             <option value="">All Languages</option>
             {availableLanguages.map((l) => (
@@ -124,7 +134,7 @@ export function FilterBar({
           <select
             value={rating}
             onChange={(e) => handleChange("rating", e.target.value)}
-            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
           >
             <option value="">All Ratings</option>
             {availableRatings.map((r) => (
@@ -135,41 +145,47 @@ export function FilterBar({
           </select>
         </div>
 
-        {/* Movie Status Filter */}
-        <div>
-          <label className="mb-1 block text-xs text-gray-400">
-            Movie Status
-          </label>
-          <select
-            value={movieStatus}
-            onChange={(e) => handleChange("movieStatus", e.target.value)}
-            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          >
-            <option value="">All Statuses</option>
-            {availableMovieStatuses.map((statusOption) => (
-              <option key={statusOption} value={statusOption}>
-                {displayLabel(statusOption)}
-              </option>
-            ))}
-          </select>
-        </div>
+        {isAdmin && (
+          <>
+            {/* Movie Status Filter */}
+            <div>
+              <label className="mb-1 block text-xs text-gray-400">
+                Movie Status
+              </label>
+              <select
+                value={movieStatus}
+                onChange={(e) => handleChange("movieStatus", e.target.value)}
+                className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              >
+                <option value="">All Statuses</option>
+                {availableMovieStatuses.map((statusOption) => (
+                  <option key={statusOption} value={statusOption}>
+                    {displayLabel(statusOption)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Auditorium Filter */}
-        <div>
-          <label className="mb-1 block text-xs text-gray-400">Auditorium</label>
-          <select
-            value={auditorium}
-            onChange={(e) => handleChange("auditorium", e.target.value)}
-            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          >
-            <option value="">All Auditoriums</option>
-            {availableAuditoriums.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-        </div>
+            {/* Auditorium Filter */}
+            <div>
+              <label className="mb-1 block text-xs text-gray-400">
+                Auditorium
+              </label>
+              <select
+                value={auditorium}
+                onChange={(e) => handleChange("auditorium", e.target.value)}
+                className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              >
+                <option value="">All Auditoriums</option>
+                {availableAuditoriums.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
 
         {/* Start Date Filter */}
         <div>
@@ -178,7 +194,7 @@ export function FilterBar({
             type="date"
             value={startDate}
             onChange={(e) => handleChange("startDate", e.target.value)}
-            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
           />
         </div>
 
@@ -189,7 +205,7 @@ export function FilterBar({
             type="date"
             value={endDate}
             onChange={(e) => handleChange("endDate", e.target.value)}
-            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
           />
         </div>
 

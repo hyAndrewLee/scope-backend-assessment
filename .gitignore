@@ -21,6 +21,9 @@ next-env.d.ts
 # production
 /build
 
+# agent scratch
+.scratch/
+
 # misc
 .DS_Store
 *.pem

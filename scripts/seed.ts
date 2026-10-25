@@ -14,10 +14,7 @@ import {
   type Showtime,
 } from "../src/features/reconciliation/schemas";
 const settings = getSettings();
-const { client, db } = createDatabase(
-  settings.DATABASE_URL,
-  settings.DATABASE_SSL_CA,
-);
+const { client, db } = createDatabase(settings.DATABASE_URL);
 try {
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(721981)`);

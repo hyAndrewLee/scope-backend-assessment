@@ -12,6 +12,7 @@ export function FileUpload({ onFileSelect, disabled }: FileUploadProps) {
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+
     if (!file) return;
 
     onFileSelect(file);

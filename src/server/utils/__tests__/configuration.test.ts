@@ -1,8 +1,10 @@
 import { test, expect } from "bun:test";
 import { settingsSchema } from "../../../env.js";
+
 const settings = {
   APP_ORIGIN: "http://localhost:3000",
 };
+
 test("database configuration rejects local URLs and unverified remote TLS without fallback", () => {
   for (const DATABASE_URL of [
     undefined,

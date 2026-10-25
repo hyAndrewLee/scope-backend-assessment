@@ -37,6 +37,7 @@ const labels: Record<string, string> = {
   last_updated: "Last updated",
   NR: "Not rated",
 };
+
 export const displayLabel = (value: string) => labels[value] ?? value;
 
 export function availablePreviewFormats(
@@ -47,9 +48,11 @@ export function availablePreviewFormats(
   const room = preview.capabilities?.auditoriums.find(
     (r) => r.name === auditorium,
   );
+
   const movie = preview.capabilities?.movies.find(
     (m) => m.id === entry.after?.movieId,
   );
+
   // New movies have only the imported format verified, not every format a room offers.
   const movieFormats =
     movie?.supportedFormats ??
@@ -58,6 +61,7 @@ export function availablePreviewFormats(
       : entry.after
         ? [entry.after.format]
         : []);
+
   return (
     room?.supportedFormats.filter((format) => movieFormats.includes(format)) ??
     []

@@ -13,10 +13,14 @@ import {
   showtimeSchema,
   type Showtime,
 } from "../src/features/reconciliation/schemas";
+
 const settings = getSettings();
 const { client, db } = createDatabase(settings.DATABASE_URL);
+
 try {
   await db.transaction(async (tx) => {
+    // #region Empty-database guard
+
     await tx.execute(sql`select pg_advisory_xact_lock(721981)`);
     for (const table of [users, theaters, auditoriums, movies, showtimes]) {
       if ((await tx.select({ id: table.id }).from(table).limit(1)).length)
@@ -24,6 +28,10 @@ try {
           "Seed requires empty application tables; existing data was not changed.",
         );
     }
+    // #endregion
+
+    // #region Theaters and persona memberships
+
     await tx.insert(theaters).values(assessmentData.theaters);
     await tx.insert(users).values(
       assessmentData.users.map(({ theaterIds, ...user }) => ({
@@ -34,7 +42,12 @@ try {
     const memberships = assessmentData.users.flatMap((u) =>
       u.theaterIds.map((theaterId) => ({ userId: u.id, theaterId })),
     );
+
     await tx.insert(userTheaters).values(memberships);
+    // #endregion
+
+    // #region Movie catalog and auditorium capabilities
+
     const catalog = new Map<
       string,
       {
@@ -45,11 +58,14 @@ try {
         supportedFormats: string[];
       }
     >();
+
     // The starter gives Dune different per-screening statuses. Preserve the more restrictive movie status.
     const priority = { approved: 0, draft: 1, "needs-review": 2, flagged: 3 };
+
     for (const row of assessmentData.showtimes) {
       const key = `${row.theaterId}:${row.movieTitle}`;
       const existing = catalog.get(key);
+
       if (!existing)
         catalog.set(key, {
           id: randomUUID(),
@@ -65,6 +81,7 @@ try {
           existing.supportedFormats.push(row.format);
       }
     }
+
     const rooms = new Map<
       string,
       {
@@ -74,6 +91,7 @@ try {
         supportedFormats: string[];
       }
     >();
+
     for (const row of assessmentData.showtimes) {
       const key = `${row.theaterId}:${row.auditorium}`;
       const room = rooms.get(key) ?? {
@@ -82,13 +100,19 @@ try {
         name: row.auditorium,
         supportedFormats: [],
       };
+
       if (!room.supportedFormats.includes(row.format))
         room.supportedFormats.push(row.format);
       rooms.set(key, room);
     }
+
     // Observed formats are seed assumptions, not an authoritative equipment inventory; verify before real imports.
     await tx.insert(auditoriums).values([...rooms.values()]);
     await tx.insert(movies).values([...catalog.values()]);
+    // #endregion
+
+    // #region Screening records
+
     for (const row of assessmentData.showtimes) {
       const movie = catalog.get(`${row.theaterId}:${row.movieTitle}`)!;
       const parsed = showtimeSchema.parse({
@@ -98,22 +122,24 @@ try {
         partnerTitle: row.movieTitle,
         partnerLastUpdated: row.lastUpdated,
       });
+
       const {
         movieTitle: _title,
         movieStatus: _status,
         auditorium,
         ...record
       } = parsed;
+
       void _title;
       void _status;
-      await tx
-        .insert(showtimes)
-        .values({
-          ...record,
-          auditoriumId: rooms.get(`${row.theaterId}:${auditorium}`)!.id,
-        });
+      await tx.insert(showtimes).values({
+        ...record,
+        auditoriumId: rooms.get(`${row.theaterId}:${auditorium}`)!.id,
+      });
     }
+    // #endregion
   });
+
   console.log("Starter records seeded into hosted database once.");
 } catch (error) {
   console.error(

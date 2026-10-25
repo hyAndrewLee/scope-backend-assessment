@@ -16,7 +16,9 @@ export async function listUsers(db: Database) {
     .from(users)
     .orderBy(asc(users.name))
     .limit(100);
+
   const memberships = await db.select().from(userTheaters);
+
   return records.map((user) =>
     userSchema.parse({
       ...user,
@@ -26,19 +28,23 @@ export async function listUsers(db: Database) {
     }),
   );
 }
+
 export async function requireUser(db: Database, id: string | null) {
   if (!id) throw new AppError(401, "Select a demo persona.");
   const [user] = await db.select().from(users).where(eq(users.id, id));
+
   if (!user) throw new AppError(401, "Unknown demo persona.");
   const memberships = await db
     .select()
     .from(userTheaters)
     .where(eq(userTheaters.userId, id));
+
   return userSchema.parse({
     ...user,
     theaterIds: memberships.map((m) => m.theaterId),
   });
 }
+
 export function assertAccess(user: User, theaterId: string, write = false) {
   if (
     (write && user.role !== "admin") ||

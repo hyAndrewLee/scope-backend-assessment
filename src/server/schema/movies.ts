@@ -1,6 +1,7 @@
 import { pgTable, text, unique, check, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { theaters } from "./theaters";
+
 export const movies = pgTable(
   "movies",
   {

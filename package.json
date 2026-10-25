@@ -12,8 +12,11 @@
     "eval:csv": "bun scripts/eval-csv.ts",
     "test:watch": "bun test --watch",
     "lint": "bun --bun eslint .",
+    "lint:fix": "bun --bun eslint . --fix",
+    "format": "bun --bun prettier --write src scripts '*.{js,json}' --ignore-unknown",
+    "format:check": "bun --bun prettier --check src scripts '*.{js,json}' --ignore-unknown",
     "typecheck": "bun --bun tsc --noEmit",
-    "check": "bun run lint && bun run typecheck && bun test",
+    "check": "bun run lint && bun run format:check && bun run typecheck && bun test",
     "db:check": "bun --conditions=react-server scripts/check-database.ts",
     "db:seed": "bun --conditions=react-server scripts/seed.ts"
   },

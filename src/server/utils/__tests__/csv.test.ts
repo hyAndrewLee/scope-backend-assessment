@@ -1,12 +1,17 @@
 import { test, expect } from "bun:test";
 import { parseCsv, uniqueRows } from "../csv";
+
 const header =
   "movie_title,theater_name,auditorium,start_time,end_time,language,format,rating,last_updated";
+
 const row =
   '"Movie, One",Downtown,Aud 1,2025-03-15T18:00:00Z,2025-03-15T20:00:00Z,EN,2D,PG,2025-03-10T00:00:00Z';
+
 const bytes = (value: string) => new TextEncoder().encode(value);
+
 test("CSV handles quoted commas, normalizes timestamps, and deduplicates", () => {
   const rows = parseCsv(bytes(`${header}\n${row}\n${row}\n`));
+
   expect(rows[0]?.movieTitle).toBe("Movie, One");
   expect(rows[0]?.startTime).toBe("2025-03-15T18:00:00.000Z");
   expect(uniqueRows(rows)).toHaveLength(1);

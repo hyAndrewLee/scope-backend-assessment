@@ -15,8 +15,11 @@ import {
   type Showtime,
 } from "../../features/reconciliation/schemas";
 
+// #region Shared row projection
+
 const iso = (column: AnyPgColumn) =>
   sql<string>`to_char(${column} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+
 const columns = {
   id: showtimes.id,
   theaterId: showtimes.theaterId,
@@ -34,6 +37,10 @@ const columns = {
   lastUpdated: iso(showtimes.lastUpdated),
   status: showtimes.status,
 };
+// #endregion
+
+// #region Revision guards and theater locking
+
 export function assertRevision(actual: number, expected: number) {
   if (actual !== expected)
     throw new AppError(
@@ -41,6 +48,7 @@ export function assertRevision(actual: number, expected: number) {
       "Schedule changed; refresh and generate a new preview.",
     );
 }
+
 export async function lockTheater(
   db: Database,
   userId: string,
@@ -51,17 +59,25 @@ export async function lockTheater(
     .from(theaters)
     .where(eq(theaters.id, theaterId))
     .for("update");
+
   if (!theater) throw new AppError(404, "Theater not found.");
   const user = await requireUser(db, userId);
+
   assertAccess(user, theaterId, true);
+
   return theater;
 }
+
 export async function advanceRevision(db: Database, theaterId: string) {
   await db
     .update(theaters)
     .set({ revision: sql`${theaters.revision} + 1` })
     .where(eq(theaters.id, theaterId));
 }
+// #endregion
+
+// #region Snapshot and paginated schedule reads
+
 export async function readSnapshot(db: Database, theaterId: string) {
   const rows = await db
     .select(columns)
@@ -71,18 +87,22 @@ export async function readSnapshot(db: Database, theaterId: string) {
     .where(eq(showtimes.theaterId, theaterId))
     .orderBy(showtimes.id)
     .limit(201);
+
   // ponytail: bounded full-schedule imports; use candidate retrieval/batching for larger imports.
   if (rows.length > 200)
     throw new AppError(
       413,
       "Full-schedule reconciliation supports at most 200 saved screenings; nothing was truncated.",
     );
+
   return rows.map((row) => showtimeSchema.parse(row));
 }
+
 export async function readSchedule(db: Database, user: User, q: Filters) {
   if (user.role !== "admin" && (q.movieStatus || q.sort === "movieStatus"))
     throw new AppError(403, "Review status is admin-only.");
   if (q.theaterId !== "all") assertAccess(user, q.theaterId);
+
   const scope =
     q.theaterId !== "all"
       ? eq(showtimes.theaterId, q.theaterId)
@@ -91,6 +111,7 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
         : user.theaterIds.length
           ? inArray(showtimes.theaterId, user.theaterIds)
           : sql`false`;
+
   const where = and(
     scope,
     q.search
@@ -114,6 +135,7 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
         )
       : undefined,
   );
+
   const sorts = {
     movieTitle: movies.title,
     movieStatus: movies.movieStatus,
@@ -122,6 +144,7 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
     endTime: showtimes.endTime,
     lastUpdated: showtimes.lastUpdated,
   };
+
   return db.transaction(
     async (tx) => {
       const [counts] = await tx
@@ -133,6 +156,7 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
         .innerJoin(movies, eq(movies.id, showtimes.movieId))
         .innerJoin(auditoriums, eq(auditoriums.id, showtimes.auditoriumId))
         .where(where);
+
       const rows = await tx
         .select(columns)
         .from(showtimes)
@@ -146,6 +170,7 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
         )
         .limit(q.pageSize)
         .offset((q.page - 1) * q.pageSize);
+
       const options = {
         formats: [] as string[],
         languages: [] as string[],
@@ -153,6 +178,7 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
         auditoriums: [] as string[],
         movieStatuses: [] as string[],
       };
+
       for (const [key, column] of Object.entries({
         formats: showtimes.format,
         languages: showtimes.language,
@@ -169,8 +195,10 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
           .where(scope)
           .orderBy(column)
           .limit(100);
+
         options[key as keyof typeof options] = values.map((row) => row.value);
       }
+
       return {
         ...counts,
         page: q.page,
@@ -178,9 +206,12 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
         options,
         showtimes: rows.map((row) => {
           const parsed = showtimeSchema.parse(row);
+
           if (user.role === "admin") return parsed;
           const { movieStatus: _status, ...visible } = parsed;
+
           void _status;
+
           return visible;
         }),
       };
@@ -188,6 +219,10 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
     { isolationLevel: "repeatable read", accessMode: "read only" },
   );
 }
+// #endregion
+
+// #region Schedule mutations
+
 export async function clearSchedule(
   db: Database,
   userId: string,
@@ -205,10 +240,13 @@ export async function clearSchedule(
         ),
       )
       .returning({ id: showtimes.id });
+
     if (changed.length) await advanceRevision(tx, theaterId);
+
     return { archived: changed.length };
   });
 }
+
 export async function changeStatus(
   db: Database,
   userId: string,
@@ -222,6 +260,7 @@ export async function changeStatus(
       .select({ theaterId: table.theaterId })
       .from(table)
       .where(eq(table.id, id));
+
     if (!found) throw new AppError(404, "Record not found.");
     await lockTheater(tx, userId, found.theaterId);
     if (kind === "showtime" && status === "active") {
@@ -235,6 +274,7 @@ export async function changeStatus(
         .innerJoin(movies, eq(movies.id, showtimes.movieId))
         .innerJoin(auditoriums, eq(auditoriums.id, showtimes.auditoriumId))
         .where(eq(showtimes.id, id));
+
       if (
         !projection ||
         !supportsProjection(
@@ -248,6 +288,7 @@ export async function changeStatus(
           "Movie and auditorium do not both support this screening format.",
         );
     }
+
     if (kind === "movie")
       await tx
         .update(movies)
@@ -262,6 +303,9 @@ export async function changeStatus(
         })
         .where(eq(showtimes.id, id));
     await advanceRevision(tx, found.theaterId);
+
     return { saved: true };
   });
 }
+
+// #endregion

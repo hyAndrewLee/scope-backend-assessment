@@ -1,21 +1,28 @@
 import { z } from "zod";
 
+// #region Shared fields and domain records
+
 export const idSchema = z
   .string()
   .min(1)
   .max(128)
   .regex(/^[\w-]+$/);
+
 export const movieStatusSchema = z.enum([
   "approved",
   "draft",
   "flagged",
   "needs-review",
 ]);
+
 export const statusSchema = z.enum(["active", "inactive", "archived"]);
+
 const instant = z.iso
   .datetime({ offset: true })
   .transform((value) => new Date(value).toISOString());
+
 const text = z.string().trim().min(1).max(256);
+
 export const fieldsSchema = z
   .object({
     partnerTitle: text,
@@ -28,6 +35,7 @@ export const fieldsSchema = z
     partnerLastUpdated: instant,
   })
   .strict();
+
 export const showtimeSchema = fieldsSchema
   .extend({
     id: idSchema,
@@ -39,7 +47,9 @@ export const showtimeSchema = fieldsSchema
     lastUpdated: instant,
   })
   .refine((row) => row.endTime > row.startTime, "End must follow start.");
+
 export type Showtime = z.infer<typeof showtimeSchema>;
+
 export const userSchema = z.object({
   id: idSchema,
   name: text,
@@ -48,13 +58,19 @@ export const userSchema = z.object({
   allTheaters: z.boolean(),
   theaterIds: z.array(idSchema),
 });
+
 export type User = z.infer<typeof userSchema>;
+
 export const theaterSchema = z.object({
   id: idSchema,
   name: text,
   location: text,
   timezone: text,
 });
+// #endregion
+
+// #region Schedule query filters
+
 export const filtersSchema = z
   .object({
     theaterId: z.union([z.literal("all"), idSchema]).default("all"),
@@ -86,7 +102,12 @@ export const filtersSchema = z
     (q) => !q.startDate || !q.endDate || q.endDate >= q.startDate,
     "Invalid date range.",
   );
+
 export type Filters = z.infer<typeof filtersSchema>;
+// #endregion
+
+// #region Import proposals and previews
+
 export const csvRowSchema = fieldsSchema
   .omit({ partnerTitle: true })
   .extend({
@@ -94,7 +115,9 @@ export const csvRowSchema = fieldsSchema
     theaterName: text,
   })
   .refine((row) => row.endTime > row.startTime, "End must follow start.");
+
 export type CsvRow = z.infer<typeof csvRowSchema>;
+
 export const proposalSchema = z
   .object({
     decisions: z
@@ -116,7 +139,9 @@ export const proposalSchema = z
       .max(100),
   })
   .strict();
+
 export type Proposal = z.infer<typeof proposalSchema>;
+
 export const entrySchema = z
   .object({
     kind: z.enum(["add", "update", "archive", "unchanged", "ambiguous"]),
@@ -130,14 +155,18 @@ export const entrySchema = z
     excluded: z.boolean().default(false),
   })
   .strict();
+
 export type Entry = z.infer<typeof entrySchema>;
+
 export const auditoriumSchema = z.object({
   id: idSchema,
   theaterId: idSchema,
   name: text.max(128),
   supportedFormats: z.array(z.enum(["2D", "3D", "IMAX"])).min(1),
 });
+
 export type Auditorium = z.infer<typeof auditoriumSchema>;
+
 export const previewSchema = z
   .object({
     personaId: idSchema,
@@ -166,7 +195,12 @@ export const previewSchema = z
       .optional(),
   })
   .strict();
+
 export type Preview = z.infer<typeof previewSchema>;
+// #endregion
+
+// #region Review and confirmation requests
+
 export const editSchema = z
   .object({
     index: z.number().int().min(0).max(299),
@@ -184,15 +218,21 @@ export const editSchema = z
       .optional(),
   })
   .strict();
+
 export const reviewSchema = z
   .object({
     preview: previewSchema,
     edits: z.array(editSchema).min(1).max(300),
   })
   .strict();
+
 export const confirmSchema = z
   .object({ preview: previewSchema, acknowledge: z.literal(true) })
   .strict();
+// #endregion
+
+// #region Schedule page response
+
 export const schedulePageSchema = z.object({
   showtimes: z.array(
     z
@@ -212,4 +252,7 @@ export const schedulePageSchema = z.object({
     movieStatuses: z.array(movieStatusSchema),
   }),
 });
+
 export type SchedulePage = z.infer<typeof schedulePageSchema>;
+
+// #endregion

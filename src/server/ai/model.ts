@@ -35,21 +35,25 @@ export async function generateProposal(
   capabilities?: Awaited<ReturnType<typeof readCapabilities>>,
 ) {
   const settings = getSettings();
+
   if (!settings.GEMINI_API_KEY)
     throw new AppError(
       503,
       "AI preview is not configured; no changes were made.",
     );
+
   const prompt = JSON.stringify({
     rows: rows.map((row, sourceRow) => ({ sourceRow, ...row })),
     showtimes: snapshot,
     capabilities,
   });
+
   if (Buffer.byteLength(prompt) > 160000)
     throw new AppError(
       413,
       "Schedule exceeds AI context limit; nothing was truncated.",
     );
+
   try {
     const result = await generateText({
       model: createGoogle({ apiKey: settings.GEMINI_API_KEY })(
@@ -70,6 +74,7 @@ Unused title/auditorium suggestions are null. Explain every decision. Return no 
       maxOutputTokens: 12000,
       abortSignal: AbortSignal.any([signal, AbortSignal.timeout(45000)]),
     });
+
     return {
       proposal: proposalSchema.parse(result.output),
       model: settings.GEMINI_MODEL,

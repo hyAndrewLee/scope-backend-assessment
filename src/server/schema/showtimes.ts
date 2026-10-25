@@ -10,6 +10,7 @@ import {
 import { sql } from "drizzle-orm";
 import { movies } from "./movies";
 import { auditoriums } from "./auditoriums";
+
 export const showtimes = pgTable(
   "showtimes",
   {

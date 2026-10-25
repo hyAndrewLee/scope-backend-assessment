@@ -24,6 +24,7 @@ const current = showtimeSchema.parse({
   rating: "PG",
   status: "active",
 });
+
 const source = csvRowSchema.parse({
   movieTitle: "Dun",
   theaterName: "Theater",
@@ -35,6 +36,7 @@ const source = csvRowSchema.parse({
   format: "3D",
   rating: "PG",
 });
+
 function unresolved() {
   return compilePreview(
     [source],
@@ -55,8 +57,10 @@ function unresolved() {
     { personaId: "admin", theaterId: "t", revision: 0, model: "test" },
   );
 }
+
 test("needs-review entries retain editable drafts and real screening choices", () => {
   const preview = unresolved();
+
   expect(preview.entries[0]?.after?.partnerTitle).toBe("Dun");
   expect(preview.existingShowtimes).toEqual([current]);
   const edited = revisePreview(
@@ -64,6 +68,7 @@ test("needs-review entries retain editable drafts and real screening choices", (
     [current],
     [{ index: 0, fields: { auditorium: "Room 2", partnerTitle: "Dune" } }],
   );
+
   expect(edited.entries[0]?.after?.auditorium).toBe("Room 2");
   expect(edited.entries[0]?.kind).toBe("ambiguous");
   expect(() => validateConfirmation(edited, [current])).toThrow();
@@ -80,11 +85,13 @@ test("reviewers can resolve an uncertain row as an existing screening and edit i
       },
     ],
   );
+
   const checked = validateAssignments(
     revised,
     [{ id: "room", theaterId: "t", name: "Room 2", supportedFormats: ["3D"] }],
     [{ id: "film", supportedFormats: ["2D", "3D"] }],
   );
+
   expect(checked.blockers).toEqual([]);
   expect(checked.entries[0]).toMatchObject({
     kind: "update",
@@ -120,6 +127,7 @@ test("reviewers can explicitly create a new screening while reusing a known movi
       },
     ],
   );
+
   expect(edited.entries[0]?.kind).toBe("add");
   expect(edited.entries[0]?.after?.movieId).toBe(current.movieId);
   expect(edited.entries[0]?.after?.id).not.toBe(current.id);
@@ -138,12 +146,14 @@ test("resolution cannot pick foreign identities, bypass formats, or change a res
     resolution: { kind: "match" as const, showtimeId: current.id },
     fields: { auditorium: "Room 2" },
   };
+
   const resolved = revisePreview(unresolved(), [current], [edit]);
   const blocked = validateAssignments(
     resolved,
     [{ id: "room", theaterId: "t", name: "Room 2", supportedFormats: ["2D"] }],
     [{ id: "film", supportedFormats: ["2D", "3D"] }],
   );
+
   expect(() => validateConfirmation(blocked, [current])).toThrow();
   expect(() =>
     revisePreview(

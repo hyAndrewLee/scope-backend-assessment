@@ -5,6 +5,7 @@ import {
   filtersSchema,
   type User,
 } from "../../../features/reconciliation/schemas";
+
 const viewer: User = {
   id: "viewer",
   name: "Viewer",
@@ -12,6 +13,7 @@ const viewer: User = {
   allTheaters: false,
   theaterIds: ["a"],
 };
+
 test("schedule rejects a foreign theater before querying the database", async () => {
   await expect(
     readSchedule(

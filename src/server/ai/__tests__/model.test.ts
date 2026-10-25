@@ -8,6 +8,7 @@ test("missing AI configuration fails honestly without a provider call or fabrica
   const previous = Object.fromEntries(
     keys.map((key) => [key, process.env[key]]),
   );
+
   Object.assign(process.env, {
     DATABASE_URL: "postgres://app:password@db.example.com/app",
     APP_ORIGIN: "http://localhost:3000",
@@ -40,12 +41,14 @@ test("provider schema does not replace strict domain validation", () => {
       },
     ],
   };
+
   expect(aiProposalSchema.safeParse(output).success).toBe(true);
   expect(proposalSchema.safeParse(output).success).toBe(false);
 });
 
 test("unexpected errors never expose provider messages or credentials", async () => {
   const response = errorResponse(new Error("secret-sentinel"));
+
   expect(response.status).toBe(500);
   expect(await response.text()).not.toContain("secret-sentinel");
 });

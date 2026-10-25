@@ -10,11 +10,13 @@ export class AppError extends Error {
     super(message);
   }
 }
+
 export function errorResponse(error: unknown) {
   const cause = error instanceof DrizzleQueryError ? error.cause : error;
   const conflict =
     cause instanceof postgres.PostgresError &&
     ["23505", "23514", "40001", "40P01"].includes(cause.code);
+
   const status =
     error instanceof AppError
       ? error.status
@@ -23,6 +25,7 @@ export function errorResponse(error: unknown) {
         : conflict
           ? 409
           : 500;
+
   const message =
     error instanceof AppError
       ? error.message
@@ -31,10 +34,12 @@ export function errorResponse(error: unknown) {
         : conflict
           ? "Saved data conflicts with this operation; refresh and review again."
           : "We couldn’t load or save your data. Please try again in a moment.";
+
   if (status === 500)
     console.error("request_failed", {
       name: error instanceof Error ? error.name : "UnknownError",
     });
+
   return Response.json(
     { error: message },
     { status, headers: { "Cache-Control": "no-store" } },

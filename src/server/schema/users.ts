@@ -1,5 +1,6 @@
 import { pgTable, text, boolean, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+
 export const users = pgTable(
   "users",
   {

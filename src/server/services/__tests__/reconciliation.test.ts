@@ -5,6 +5,7 @@ import {
   showtimeSchema,
   type Preview,
 } from "../../../features/reconciliation/schemas";
+
 const row = showtimeSchema.parse({
   id: "s",
   theaterId: "t",
@@ -22,6 +23,7 @@ const row = showtimeSchema.parse({
   rating: "PG",
   status: "active",
 });
+
 const preview: Preview = {
   personaId: "u",
   theaterId: "t",
@@ -40,6 +42,7 @@ const preview: Preview = {
     },
   ],
 };
+
 test("confirmation applies included changes only and rechecks current rows", () => {
   expect(validateConfirmation(preview, [row])).toHaveLength(1);
   expect(
@@ -74,6 +77,7 @@ test("admin preview edits cannot mutate movie identity", () => {
         },
       ],
     };
+
     expect(() => validateConfirmation(forged, [row])).toThrow();
   }
 });
@@ -89,6 +93,7 @@ test("archive and unchanged labels cannot hide arbitrary field changes", () => {
         },
       ],
     };
+
     expect(() => validateConfirmation(forged, [row])).toThrow();
   }
 });
@@ -100,6 +105,7 @@ test("additions allow reviewed statuses but cannot bypass active identities", ()
     sourceRow: 0,
     after: { ...row, id: "new" },
   };
+
   expect(() =>
     validateConfirmation({ ...preview, entries: [entry] }, [row]),
   ).toThrow();
@@ -131,10 +137,12 @@ test("additions allow reviewed statuses but cannot bypass active identities", ()
       movieTitle: "New film",
     },
   };
+
   const first = {
     ...entry,
     after: { ...entry.after, movieId: "first-id", movieTitle: "New film" },
   };
+
   expect(() =>
     validateConfirmation({ ...preview, entries: [first, other] }, [row]),
   ).toThrow();
@@ -145,6 +153,7 @@ test("administrator status-only edits are valid but contradictory movie statuses
     kind: "update" as const,
     after: { ...row, movieStatus: "flagged" as const },
   };
+
   expect(
     validateConfirmation({ ...preview, entries: [changed] }, [row]),
   ).toHaveLength(1);
@@ -154,6 +163,7 @@ test("administrator status-only edits are valid but contradictory movie statuses
     startTime: "2025-01-01T14:00:00.000Z",
     endTime: "2025-01-01T16:00:00.000Z",
   };
+
   expect(() =>
     validateConfirmation(
       {
@@ -185,6 +195,7 @@ test("validated admin changes remain editable without a cryptographic secret", (
     kind: "update" as const,
     after: { ...row, auditorium: "Other room" },
   };
+
   expect(
     validateConfirmation({ ...preview, entries: [entry] }, [row]),
   ).toHaveLength(1);

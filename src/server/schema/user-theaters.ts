@@ -1,6 +1,7 @@
 import { pgTable, text, primaryKey } from "drizzle-orm/pg-core";
 import { users } from "./users";
 import { theaters } from "./theaters";
+
 export const userTheaters = pgTable(
   "user_theaters",
   {

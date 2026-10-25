@@ -1,5 +1,6 @@
 import { pgTable, text, integer, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+
 export const theaters = pgTable(
   "theaters",
   {

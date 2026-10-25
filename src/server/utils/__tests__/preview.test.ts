@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { readPreview } from "../preview";
 import type { Preview } from "../../../features/reconciliation/schemas";
+
 const preview: Preview = {
   personaId: "admin",
   theaterId: "downtown",
@@ -9,6 +10,7 @@ const preview: Preview = {
   blockers: [],
   model: "not-required",
 };
+
 test("plain previews validate shape and persona/theater binding without a secret", () => {
   expect(readPreview(preview, "admin", "downtown")).toEqual(preview);
   expect(() => readPreview(preview, "viewer", "downtown")).toThrow();

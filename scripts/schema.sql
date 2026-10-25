@@ -3,6 +3,8 @@
 -- No DROP statements and no automatic migration of an existing application.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
+-- #region Theaters and persona access
+
 CREATE TABLE users (
   id text PRIMARY KEY,
   name text NOT NULL,
@@ -10,6 +12,7 @@ CREATE TABLE users (
   role text NOT NULL CONSTRAINT users_role CHECK (role IN ('admin','viewer')),
   all_theaters boolean NOT NULL DEFAULT false
 );
+
 CREATE TABLE theaters (
   id text PRIMARY KEY,
   name text NOT NULL,
@@ -17,11 +20,16 @@ CREATE TABLE theaters (
   timezone text NOT NULL,
   revision integer NOT NULL DEFAULT 0 CONSTRAINT theaters_revision CHECK (revision >= 0)
 );
+
 CREATE TABLE user_theaters (
   user_id text NOT NULL REFERENCES users(id),
   theater_id text NOT NULL REFERENCES theaters(id),
   PRIMARY KEY(user_id,theater_id)
 );
+-- #endregion
+
+-- #region Auditorium capabilities and movie catalog
+
 CREATE TABLE auditoriums (
   id text PRIMARY KEY,
   theater_id text NOT NULL REFERENCES theaters(id),
@@ -31,6 +39,7 @@ CREATE TABLE auditoriums (
   CONSTRAINT auditoriums_theater_identity UNIQUE(theater_id,id),
   CONSTRAINT auditoriums_theater_name UNIQUE(theater_id,name)
 );
+
 CREATE TABLE movies (
   id text PRIMARY KEY,
   theater_id text NOT NULL REFERENCES theaters(id),
@@ -42,6 +51,10 @@ CREATE TABLE movies (
   CONSTRAINT movies_theater_identity UNIQUE(theater_id,id)
 );
 CREATE INDEX movies_title_search ON movies USING gin(title gin_trgm_ops);
+-- #endregion
+
+-- #region Screenings and projection integrity
+
 CREATE TABLE showtimes (
   id text PRIMARY KEY,
   theater_id text NOT NULL,
@@ -79,6 +92,10 @@ END $$;
 CREATE TRIGGER showtimes_projection BEFORE INSERT OR UPDATE ON showtimes
   FOR EACH ROW EXECUTE FUNCTION check_projection_format();
 
+-- #endregion
+
+-- #region Runtime role access
+
 -- Server connection only; no direct hosted data-API access.
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE theaters ENABLE ROW LEVEL SECURITY;
@@ -96,3 +113,5 @@ CREATE POLICY server_access ON user_theaters TO :"runtime_role" USING (true) WIT
 CREATE POLICY server_access ON auditoriums TO :"runtime_role" USING (true) WITH CHECK (true);
 CREATE POLICY server_access ON movies TO :"runtime_role" USING (true) WITH CHECK (true);
 CREATE POLICY server_access ON showtimes TO :"runtime_role" USING (true) WITH CHECK (true);
+
+-- #endregion

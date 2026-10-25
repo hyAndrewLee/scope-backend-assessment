@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { assertAccess } from "../users";
 import type { User } from "../../../features/reconciliation/schemas";
+
 const admin: User = {
   id: "admin",
   name: "Admin",
@@ -8,6 +9,7 @@ const admin: User = {
   allTheaters: false,
   theaterIds: ["a"],
 };
+
 test("role and some/none/all membership rules are enforced independently", () => {
   expect(() => assertAccess(admin, "a", true)).not.toThrow();
   expect(() => assertAccess(admin, "b", true)).toThrow();

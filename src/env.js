@@ -8,6 +8,7 @@ export const settingsSchema = z.object({
     .refine((value) => {
       try {
         const url = new URL(value);
+
         return (
           ["postgres:", "postgresql:"].includes(url.protocol) &&
           !!url.username &&
@@ -39,7 +40,9 @@ export const getSettings = () => {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || undefined,
     GEMINI_MODEL: process.env.GEMINI_MODEL || undefined,
   });
+
   // Server setup failures are not client validation errors; never expose env values.
   if (!result.success) throw new Error("Server configuration is incomplete.");
+
   return result.data;
 };

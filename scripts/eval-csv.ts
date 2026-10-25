@@ -16,9 +16,12 @@ import { availablePreviewFormats } from "../src/features/reconciliation/display"
 import { AppError } from "../src/server/errors";
 import golden from "../sample-data/edge-cases/golden.json";
 
+// #region Evaluation context
+
 const directory = fileURLToPath(
   new URL("../sample-data/edge-cases/", import.meta.url),
 );
+
 const fields: (keyof CsvRow)[] = [
   "theaterName",
   "movieTitle",
@@ -30,9 +33,11 @@ const fields: (keyof CsvRow)[] = [
   "rating",
   "partnerLastUpdated",
 ];
+
 const seed = assessmentData.showtimes.filter(
   (s) => s.theaterId === "theater-downtown",
 );
+
 const snapshot = seed.map((s) =>
   showtimeSchema.parse({
     ...s,
@@ -41,6 +46,7 @@ const snapshot = seed.map((s) =>
     partnerLastUpdated: s.lastUpdated,
   }),
 );
+
 const rooms = [...new Set(snapshot.map((s) => s.auditorium))].map(
   (name, i) => ({
     id: `room-${i}`,
@@ -53,18 +59,24 @@ const rooms = [...new Set(snapshot.map((s) => s.auditorium))].map(
     ],
   }),
 );
+
 const movies = [...new Set(snapshot.map((s) => s.movieId))].map((id) => ({
   id,
   supportedFormats: [
     ...new Set(snapshot.filter((s) => s.movieId === id).map((s) => s.format)),
   ],
 }));
+
 const metadata = {
   personaId: "eval-admin",
   theaterId: "theater-downtown",
   revision: 0,
   model: "local-golden",
 };
+
+// #endregion
+
+// #region Golden scenario evaluation
 
 // Deterministic decisions isolate application validation from model variability.
 // These are evaluation inputs only, never an application AI fallback.
@@ -74,7 +86,9 @@ function decisionsFor(rows: CsvRow[]): Proposal {
       const match = snapshot.find(
         (s) => s.movieTitle === row.movieTitle && s.startTime === row.startTime,
       );
+
       const movie = snapshot.find((s) => s.movieTitle === row.movieTitle);
+
       return {
         sourceRow,
         kind: match ? "match" : "add",
@@ -93,18 +107,22 @@ export async function runCsvEvals() {
   const columnChecks = Object.fromEntries(
     golden.columns.map((name) => [name, 0]),
   );
+
   for (const scenario of golden.cases) {
     try {
       const bytes = new Uint8Array(
         await Bun.file(directory + scenario.file).arrayBuffer(),
       );
+
       if (scenario.outcome === "invalid") {
         let failure: unknown;
+
         try {
           parseCsv(bytes);
         } catch (error) {
           failure = error;
         }
+
         assert(
           failure instanceof AppError,
           "Invalid CSV was accepted or failed unexpectedly",
@@ -120,8 +138,10 @@ export async function runCsvEvals() {
           bytes,
           "mapping" in scenario ? scenario.mapping : undefined,
         );
+
         const rows =
           scenario.outcome === "conflict" ? parsed : uniqueRows(parsed);
+
         assert("rows" in scenario);
         assert.equal(rows.length, scenario.rows!.length, "Unique row count");
         for (const [index, row] of rows.entries()) {
@@ -134,14 +154,17 @@ export async function runCsvEvals() {
             columnChecks[golden.columns[column]!]!++;
           }
         }
+
         if (scenario.outcome === "unchanged") {
           const proposal = exactProposal(rows, snapshot);
+
           assert(proposal, "Unchanged schedule should bypass AI");
           const preview = validateAssignments(
             compilePreview(rows, snapshot, proposal, metadata),
             rooms,
             movies,
           );
+
           assert(preview.entries.every((e) => e.kind === "unchanged"));
           assert.equal(preview.blockers.length, 0);
         } else if (scenario.outcome === "capability-blocked") {
@@ -150,6 +173,7 @@ export async function runCsvEvals() {
             rooms,
             movies,
           );
+
           assert(
             preview.blockers.length > 0,
             "Incompatible assignment must block confirmation",
@@ -161,8 +185,10 @@ export async function runCsvEvals() {
               entry,
               entry.after.auditorium,
             );
+
             const room = rooms.find((r) => r.name === entry.after?.auditorium);
             const movie = movies.find((m) => m.id === entry.after?.movieId);
+
             assert(
               formats.every(
                 (f) =>
@@ -178,7 +204,9 @@ export async function runCsvEvals() {
             decisionsFor(rows),
             metadata,
           );
+
           const archives = preview.entries.filter((e) => e.kind === "archive");
+
           assert.equal(archives.length, 1);
           assert.equal(archives[0]!.after?.movieTitle, "Kung Fu Panda 4");
         } else if (scenario.outcome === "conflict") {
@@ -194,6 +222,7 @@ export async function runCsvEvals() {
           assert(rows.some((row) => row.theaterName !== "Downtown Cinema 7"));
         }
       }
+
       results.push({ file: scenario.file, passed: true });
     } catch (error) {
       results.push({
@@ -203,6 +232,7 @@ export async function runCsvEvals() {
       });
     }
   }
+
   return {
     passed: results.filter((r) => r.passed).length,
     total: results.length,
@@ -211,8 +241,13 @@ export async function runCsvEvals() {
   };
 }
 
+// #endregion
+
+// #region Command-line report
+
 if (import.meta.main) {
   const report = await runCsvEvals();
+
   for (const result of report.results)
     console.log(
       `${result.passed ? "PASS" : "FAIL"} ${result.file}${result.error ? `: ${result.error}` : ""}`,
@@ -223,3 +258,5 @@ if (import.meta.main) {
   );
   if (report.passed !== report.total) process.exitCode = 1;
 }
+
+// #endregion

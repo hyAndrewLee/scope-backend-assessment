@@ -1,8 +1,10 @@
 import { sql } from "drizzle-orm";
 import { createDatabase } from "../src/server/database";
 import { getSettings } from "../src/env.js";
+
 const settings = getSettings();
 const { client, db } = createDatabase(settings.DATABASE_URL);
+
 try {
   await db.execute(sql`select 1`);
   console.log("Hosted database connection verified.");

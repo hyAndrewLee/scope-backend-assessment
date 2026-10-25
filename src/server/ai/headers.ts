@@ -12,12 +12,15 @@ import { AppError } from "../errors";
 export async function mapHeaders(headers: string[], signal: AbortSignal) {
   checkRawHeaders(headers);
   const settings = getSettings();
+
   if (!settings.GEMINI_API_KEY)
     throw new AppError(
       503,
       "AI header matching is not configured; correct the headers or configure Gemini.",
     );
+
   let mapping: string[];
+
   try {
     const result = await generateText({
       model: createGoogle({ apiKey: settings.GEMINI_API_KEY })(
@@ -39,6 +42,7 @@ export async function mapHeaders(headers: string[], signal: AbortSignal) {
       maxRetries: 0,
       maxOutputTokens: 512,
     });
+
     if (!result.output?.certain) throw new Error("Uncertain mapping");
     mapping = result.output.columns;
   } catch {
@@ -47,6 +51,7 @@ export async function mapHeaders(headers: string[], signal: AbortSignal) {
       "AI could not safely recognize column names; correct the headers.",
     );
   }
+
   // The model cannot override canonical names, swap arbitrary columns, or expand its authority.
   return validateHeaderMapping(headers, mapping);
 }

@@ -13,11 +13,13 @@ export async function readCapabilities(db: Database, theaterId: string) {
     .from(auditoriums)
     .where(eq(auditoriums.theaterId, theaterId))
     .limit(101);
+
   if (rooms.length > 100)
     throw new AppError(
       413,
       "Auditorium context limit exceeded; nothing was truncated.",
     );
+
   const catalog = await db
     .select({
       id: movies.id,
@@ -27,11 +29,13 @@ export async function readCapabilities(db: Database, theaterId: string) {
     .from(movies)
     .where(eq(movies.theaterId, theaterId))
     .limit(201);
+
   if (catalog.length > 200)
     throw new AppError(
       413,
       "Movie context limit exceeded; nothing was truncated.",
     );
+
   return {
     auditoriums: rooms.map((room) => auditoriumSchema.parse(room)),
     movies: z

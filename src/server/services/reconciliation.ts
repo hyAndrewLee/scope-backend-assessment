@@ -32,16 +32,21 @@ import type {
   reviewSchema,
 } from "../../features/reconciliation/schemas";
 
+// #region Preview creation and review
+
 async function snapshotFor(db: Database, personaId: string, theaterId: string) {
   return db.transaction(
     async (tx) => {
       const user = await requireUser(tx, personaId);
+
       assertAccess(user, theaterId, true);
       const [theater] = await tx
         .select()
         .from(theaters)
         .where(eq(theaters.id, theaterId));
+
       if (!theater) throw new AppError(404, "Theater not found.");
+
       return {
         theater,
         rows: await readSnapshot(tx, theaterId),
@@ -51,6 +56,7 @@ async function snapshotFor(db: Database, personaId: string, theaterId: string) {
     { isolationLevel: "repeatable read", accessMode: "read only" },
   );
 }
+
 export async function createPreview(
   db: Database,
   personaId: string,
@@ -62,11 +68,13 @@ export async function createPreview(
   const headers = csvHeaders(bytes);
   const mapping = exactHeaders(headers) ?? (await mapHeaders(headers, signal));
   const rows = uniqueRows(parseCsv(bytes, mapping));
+
   if (rows.some((row) => row.theaterName !== snapshot.theater.name))
     throw new AppError(
       400,
       "Every CSV record must belong to the selected theater.",
     );
+
   const exact = exactProposal(rows, snapshot.rows);
   const generated = exact
     ? { proposal: exact, model: "not-required" }
@@ -76,6 +84,7 @@ export async function createPreview(
         signal,
         snapshot.capabilities,
       );
+
   const compiled = compilePreview(rows, snapshot.rows, generated.proposal, {
     personaId,
     theaterId,
@@ -85,13 +94,16 @@ export async function createPreview(
       from === mapping[i] ? [] : [{ from, to: mapping[i]! }],
     ),
   });
+
   const preview = validateAssignments(
     compiled,
     snapshot.capabilities.auditoriums,
     snapshot.capabilities.movies,
   );
+
   return readPreview(preview, personaId, theaterId);
 }
+
 export async function reviewPreview(
   db: Database,
   personaId: string,
@@ -100,9 +112,12 @@ export async function reviewPreview(
 ) {
   const preview = readPreview(input.preview, personaId, theaterId);
   const snapshot = await snapshotFor(db, personaId, theaterId);
+
   assertRevision(snapshot.theater.revision, preview.revision);
   const revised = revisePreview(preview, snapshot.rows, input.edits);
+
   validateChanges(revised, snapshot.rows);
+
   return readPreview(
     validateAssignments(
       revised,
@@ -113,6 +128,10 @@ export async function reviewPreview(
     theaterId,
   );
 }
+// #endregion
+
+// #region Change and confirmation validation
+
 export function validateChanges(
   preview: Preview,
   snapshot: Awaited<ReturnType<typeof readSnapshot>>,
@@ -122,11 +141,14 @@ export function validateChanges(
   const included = preview.entries.filter(
     (e) => !e.excluded && e.kind !== "ambiguous",
   );
+
   const changes = included.filter((e) => e.kind !== "unchanged");
   const movieStatuses = new Map<string, string>();
+
   for (const entry of included) {
     if (!entry.after || entry.kind === "archive") continue;
     const { movieId, movieStatus } = entry.after;
+
     if (
       movieStatuses.has(movieId) &&
       movieStatuses.get(movieId) !== movieStatus
@@ -137,8 +159,10 @@ export function validateChanges(
       );
     movieStatuses.set(movieId, movieStatus);
   }
+
   for (const entry of included) {
     const after = entry.after;
+
     if (!after || after.theaterId !== preview.theaterId || used.has(after.id))
       throw new AppError(400, "Invalid preview target.");
     used.add(after.id);
@@ -149,6 +173,7 @@ export function validateChanges(
           "Invalid addition or screening already exists.",
         );
       const movie = snapshot.find((s) => s.movieId === after.movieId);
+
       if (movie && after.movieTitle !== movie.movieTitle)
         throw new AppError(400, "Import cannot change movie identity.");
       if (
@@ -174,12 +199,15 @@ export function validateChanges(
       const other = changes.find(
         (e) => e !== entry && e.after?.movieId === after.movieId,
       );
+
       if (other?.after && other.after.movieTitle !== after.movieTitle)
         throw new AppError(400, "Inconsistent movie identity.");
       continue;
     }
+
     const actual = known.get(after.id);
     const fields = showtimeSchema.keyof().options;
+
     if (
       !actual ||
       !entry.before ||
@@ -187,6 +215,7 @@ export function validateChanges(
     )
       throw new AppError(409, "Reviewed screening changed; upload again.");
     const immutable = ["id", "theaterId", "movieId", "movieTitle"] as const;
+
     if (immutable.some((key) => actual[key] !== after[key]))
       throw new AppError(400, "Import cannot change screening identity.");
     if (
@@ -208,8 +237,10 @@ export function validateChanges(
     )
       throw new AppError(400, "Unchanged entries must match the database.");
   }
+
   return changes;
 }
+
 export function validateConfirmation(
   preview: Preview,
   snapshot: Awaited<ReturnType<typeof readSnapshot>>,
@@ -220,10 +251,16 @@ export function validateConfirmation(
     ...changes,
     ...preview.entries.filter((e) => e.kind === "ambiguous"),
   ];
+
   if (preview.blockers.length || finalBlockers(snapshot, candidates).length)
     throw new AppError(409, "Resolve preview blockers before confirming.");
+
   return changes;
 }
+// #endregion
+
+// #region Transactional confirmation
+
 export async function confirmPreview(
   db: Database,
   personaId: string,
@@ -231,8 +268,10 @@ export async function confirmPreview(
   input: Preview,
 ) {
   const preview = readPreview(input, personaId, theaterId);
+
   return db.transaction(async (tx) => {
     const theater = await lockTheater(tx, personaId, theaterId);
+
     assertRevision(theater.revision, preview.revision);
     const capabilities = await readCapabilities(tx, theaterId);
     const checked = validateAssignments(
@@ -240,9 +279,12 @@ export async function confirmPreview(
       capabilities.auditoriums,
       capabilities.movies,
     );
+
     const snapshot = await readSnapshot(tx, theaterId);
     const changes = validateConfirmation(checked, snapshot);
+
     if (!changes.length) throw new AppError(409, "No changes to confirm.");
+
     // Deactivate affected rows before reactivation, preserving the partial unique index during swaps.
     for (const entry of changes)
       if (entry.before)
@@ -255,8 +297,10 @@ export async function confirmPreview(
               eq(showtimes.theaterId, theaterId),
             ),
           );
+
     for (const entry of changes) {
       const after = entry.after!;
+
       if (entry.kind === "add") {
         await tx
           .insert(movies)
@@ -281,6 +325,7 @@ export async function confirmPreview(
           .select()
           .from(movies)
           .where(eq(movies.id, after.movieId));
+
         if (
           !movie ||
           movie.theaterId !== theaterId ||
@@ -288,21 +333,25 @@ export async function confirmPreview(
         )
           throw new AppError(409, "Movie identity conflict.");
       }
+
       const {
         movieTitle: _title,
         movieStatus: _status,
         auditorium,
         ...record
       } = after;
+
       void _title;
       void _status;
       const room = capabilities.auditoriums.find((r) => r.name === auditorium);
+
       if (!room) throw new AppError(409, "Auditorium no longer exists.");
       const values = {
         ...record,
         auditoriumId: room.id,
         lastUpdated: new Date().toISOString(),
       };
+
       if (entry.kind === "add") await tx.insert(showtimes).values(values);
       else
         await tx
@@ -312,14 +361,18 @@ export async function confirmPreview(
             and(eq(showtimes.id, after.id), eq(showtimes.theaterId, theaterId)),
           );
     }
+
     // Movie review status belongs to the movie, including screenings not in this upload.
     const updatedMovies = new Set<string>();
+
     for (const entry of changes) {
       const after = entry.after!;
+
       if (entry.kind === "archive" || updatedMovies.has(after.movieId))
         continue;
       updatedMovies.add(after.movieId);
       const existing = snapshot.find((s) => s.movieId === after.movieId);
+
       if (existing && existing.movieStatus !== after.movieStatus)
         await tx
           .update(movies)
@@ -328,7 +381,9 @@ export async function confirmPreview(
             and(eq(movies.id, after.movieId), eq(movies.theaterId, theaterId)),
           );
     }
+
     await advanceRevision(tx, theaterId);
+
     return {
       added: changes.filter((e) => e.kind === "add").length,
       updated: changes.filter((e) => e.kind === "update").length,
@@ -337,3 +392,5 @@ export async function confirmPreview(
     };
   });
 }
+
+// #endregion

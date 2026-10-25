@@ -10,6 +10,7 @@ import {
   reviewSchema,
   type Proposal,
 } from "../../../features/reconciliation/schemas";
+
 const before = showtimeSchema.parse({
   id: "screening",
   theaterId: "downtown",
@@ -27,6 +28,7 @@ const before = showtimeSchema.parse({
   lastUpdated: "2025-03-10T00:00:00Z",
   status: "active",
 });
+
 const row = csvRowSchema.parse({
   ...Object.fromEntries(
     Object.entries(before).filter(([key]) =>
@@ -44,12 +46,14 @@ const row = csvRowSchema.parse({
   ),
   theaterName: "Downtown",
 });
+
 const metadata = {
   personaId: "admin",
   theaterId: "downtown",
   revision: 0,
   model: "test",
 };
+
 const match: Proposal = {
   decisions: [
     {
@@ -63,6 +67,7 @@ const match: Proposal = {
     },
   ],
 };
+
 test("AI status suggestions stay advisory until the administrator chooses a status", () => {
   const preview = compilePreview(
     [row],
@@ -78,6 +83,7 @@ test("AI status suggestions stay advisory until the administrator chooses a stat
     },
     metadata,
   );
+
   expect(preview.entries[0]?.suggestedMovieStatus).toBe("needs-review");
   expect(preview.entries[0]?.movieStatusReason).toBe(
     "Check the imported metadata.",
@@ -93,6 +99,7 @@ test("movie status edits apply to all screenings of a movie and reject conflicti
     startTime: "2025-03-15T21:00:00.000Z",
     endTime: "2025-03-15T23:00:00.000Z",
   };
+
   const preview = compilePreview(
     [row, { ...row, startTime: later.startTime, endTime: later.endTime }],
     [before, later],
@@ -104,10 +111,13 @@ test("movie status edits apply to all screenings of a movie and reject conflicti
     },
     metadata,
   );
+
   const edits = reviewSchema.shape.edits.parse([
     { index: 0, fields: { movieStatus: "flagged" } },
   ]);
+
   const revised = revisePreview(preview, [before, later], edits);
+
   expect(revised.entries.map((e) => e.after?.movieStatus)).toEqual([
     "flagged",
     "flagged",
@@ -135,8 +145,10 @@ test("movie status edits apply to all screenings of a movie and reject conflicti
 
 test("exact unchanged schedules bypass AI; minor title spelling preserves identity", () => {
   const exact = exactProposal([{ ...row, movieTitle: "Spider Man" }], [before]);
+
   expect(exact).not.toBeNull();
   const preview = compilePreview([row], [before], exact, metadata);
+
   expect(preview.entries[0]?.kind).toBe("unchanged");
   expect(preview.entries[0]?.after?.id).toBe(before.id);
 });
@@ -147,12 +159,14 @@ test("an AI addition cannot replace an existing movie/start identity", () => {
     showtimeId: null,
     movieId: before.movieId,
   };
+
   const preview = compilePreview(
     [{ ...row, auditorium: "New Hall" }],
     [before],
     { decisions: [decision] },
     metadata,
   );
+
   expect(preview.entries[0]?.kind).toBe("update");
   expect(preview.entries[0]?.after?.id).toBe(before.id);
 });
@@ -164,12 +178,14 @@ test("updates preserve identity and missing screenings archive across all dates"
     startTime: "2026-01-01T18:00:00.000Z",
     endTime: "2026-01-01T20:00:00.000Z",
   };
+
   const preview = compilePreview(
     [{ ...row, auditorium: "New Hall" }],
     [before, other],
     match,
     metadata,
   );
+
   expect(preview.entries.map((e) => e.kind)).toEqual(["update", "archive"]);
   expect(preview.entries[1]?.after?.status).toBe("archived");
 });
@@ -207,6 +223,7 @@ test("ambiguity blocks confirmation and removes archival; exclusion can resolve 
     },
     metadata,
   );
+
   expect(preview.blockers.length).toBeGreaterThan(0);
   expect(preview.entries.some((e) => e.kind === "archive")).toBe(false);
   const revised = revisePreview(
@@ -214,11 +231,13 @@ test("ambiguity blocks confirmation and removes archival; exclusion can resolve 
     [before],
     [{ index: 0, excluded: true }],
   );
+
   expect(revised.blockers).toHaveLength(0);
   expect(revised.revision).toBe(preview.revision);
 });
 test("review edits validate time order, immutable fields, exclusions and duplicate identities", () => {
   const preview = compilePreview([row], [before], match, metadata);
+
   expect(() =>
     revisePreview(
       preview,
@@ -237,6 +256,7 @@ test("review edits validate time order, immutable fields, exclusions and duplica
     [before],
     [{ index: 0, fields: { auditorium: "Hall B" } }],
   );
+
   expect(revised.entries[0]?.kind).toBe("update");
   expect(preview.entries[0]?.kind).toBe("unchanged");
   const duplicate = {
@@ -245,6 +265,7 @@ test("review edits validate time order, immutable fields, exclusions and duplica
     startTime: "2025-03-15T21:00:00.000Z",
     endTime: "2025-03-15T23:00:00.000Z",
   };
+
   const both = compilePreview(
     [
       row,
@@ -259,10 +280,12 @@ test("review edits validate time order, immutable fields, exclusions and duplica
     },
     metadata,
   );
+
   const conflict = revisePreview(
     both,
     [before, duplicate],
     [{ index: 1, fields: { startTime: before.startTime } }],
   );
+
   expect(conflict.blockers.length).toBeGreaterThan(0);
 });

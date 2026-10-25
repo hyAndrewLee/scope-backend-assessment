@@ -30,6 +30,7 @@ o/bKiIz+Fq8=
 
 export function databaseTls(hostname: string) {
   const supabase = /(?:^|\.)supabase\.(?:co|com)$/.test(hostname);
+
   return {
     rejectUnauthorized: true as const,
     ...(supabase ? { ca: [...rootCertificates, supabaseCa] } : {}),

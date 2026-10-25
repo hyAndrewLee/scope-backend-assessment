@@ -1,4 +1,5 @@
 import { AppError } from "../errors";
+
 export const CSV_HEADERS = [
   "movie_title",
   "theater_name",
@@ -10,8 +11,11 @@ export const CSV_HEADERS = [
   "rating",
   "last_updated",
 ] as const;
+
 export type CsvHeader = (typeof CSV_HEADERS)[number];
+
 const key = (value: string) => value.toLowerCase().replace(/[\s_-]/g, "");
+
 export function checkRawHeaders(headers: string[]) {
   if (
     headers.length !== CSV_HEADERS.length ||
@@ -31,17 +35,22 @@ export function checkRawHeaders(headers: string[]) {
       "Use nine distinct short column names. Instruction-like or duplicate headers are rejected.",
     );
 }
+
 export function exactHeaders(headers: string[]): CsvHeader[] | null {
   checkRawHeaders(headers);
   const mapped = headers.map((h) =>
     CSV_HEADERS.find((name) => key(name) === key(h)),
   );
+
   return mapped.every((h) => h !== undefined) ? (mapped as CsvHeader[]) : null;
 }
+
 function distance(a: string, b: string) {
   let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+
   for (let i = 1; i <= a.length; i++) {
     const next = [i];
+
     for (let j = 1; j <= b.length; j++)
       next[j] = Math.min(
         next[j - 1]! + 1,
@@ -50,8 +59,10 @@ function distance(a: string, b: string) {
       );
     row = next;
   }
+
   return row[b.length]!;
 }
+
 export function validateHeaderMapping(
   headers: string[],
   mapped: string[],
@@ -66,8 +77,10 @@ export function validateHeaderMapping(
       400,
       "AI could not map each column exactly once; correct the headers.",
     );
+
   for (const [i, header] of headers.entries()) {
     const canonical = CSV_HEADERS.find((h) => key(h) === key(header));
+
     if (
       (canonical && canonical !== mapped[i]) ||
       distance(key(header), key(mapped[i]!)) > 2
@@ -77,5 +90,6 @@ export function validateHeaderMapping(
         "Unsafe or uncertain header mapping; correct the column names.",
       );
   }
+
   return mapped as CsvHeader[];
 }

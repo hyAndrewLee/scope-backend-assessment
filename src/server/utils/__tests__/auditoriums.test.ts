@@ -1,6 +1,9 @@
 import { test, expect } from "bun:test";
 import { supportsProjection, validateAssignments } from "../auditoriums";
-import { availablePreviewFormats, displayLabel } from "../../../features/reconciliation/display";
+import {
+  availablePreviewFormats,
+  displayLabel,
+} from "../../../features/reconciliation/display";
 import {
   showtimeSchema,
   type Auditorium,
@@ -16,6 +19,7 @@ const rooms: Auditorium[] = [
     supportedFormats: ["2D", "3D"],
   },
 ];
+
 const row = showtimeSchema.parse({
   id: "s",
   theaterId: "t",
@@ -33,6 +37,7 @@ const row = showtimeSchema.parse({
   rating: "PG",
   status: "active",
 });
+
 const preview: Preview = {
   personaId: "u",
   theaterId: "t",
@@ -51,14 +56,26 @@ const preview: Preview = {
     },
   ],
 };
+
 test("preview dropdown formats respect both room and movie capabilities", () => {
-  const p: Preview = { ...preview, capabilities: { auditoriums: rooms, movies: [{ id: "m", supportedFormats: ["3D"] }] } };
+  const p: Preview = {
+    ...preview,
+    capabilities: {
+      auditoriums: rooms,
+      movies: [{ id: "m", supportedFormats: ["3D"] }],
+    },
+  };
+
   const entry = p.entries[0]!;
+
   expect(availablePreviewFormats(p, entry, "Room 1")).toEqual([]);
   expect(availablePreviewFormats(p, entry, "Room 2")).toEqual(["3D"]);
   expect(availablePreviewFormats(p, entry, "Unknown room")).toEqual([]);
-  expect(availablePreviewFormats({ ...p, capabilities: undefined }, entry, "Room 2")).toEqual([]);
+  expect(
+    availablePreviewFormats({ ...p, capabilities: undefined }, entry, "Room 2"),
+  ).toEqual([]);
   const newMovie = { ...p, capabilities: { auditoriums: rooms, movies: [] } };
+
   expect(availablePreviewFormats(newMovie, entry, "Room 2")).toEqual(["3D"]);
   expect(displayLabel("EN")).toBe("English");
   expect(displayLabel("needs-review")).toBe("Needs review");
@@ -72,6 +89,7 @@ test("both movie and auditorium must support the requested format; IMAX does not
 });
 test("unsupported or foreign rooms block confirmation; corrected room is canonicalized", () => {
   const movies = [{ id: "m", supportedFormats: ["3D" as const] }];
+
   expect(
     validateAssignments(preview, rooms, movies).blockers.length,
   ).toBeGreaterThan(0);
@@ -82,6 +100,7 @@ test("unsupported or foreign rooms block confirmation; corrected room is canonic
       after: { ...row, auditorium: "room-2" },
     })),
   };
+
   expect(validateAssignments(corrected, rooms, movies).blockers).toEqual([]);
   expect(
     validateAssignments(corrected, rooms, movies).entries[0]?.after?.auditorium,
@@ -102,6 +121,7 @@ test("a movie-only limitation cannot be bypassed by selecting a more capable roo
       after: { ...row, auditorium: "Room 2", format: "2D" as const },
     })),
   };
+
   expect(
     validateAssignments(unsupported, rooms, [
       { id: "m", supportedFormats: ["3D"] },

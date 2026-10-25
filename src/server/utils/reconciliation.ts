@@ -26,6 +26,7 @@ const imported = [
   "language",
   "format",
   "rating",
+  "movieStatus",
   "status",
 ] as const;
 export function exactProposal(
@@ -196,6 +197,8 @@ export function compilePreview(
       before: before ?? null,
       after: kind === "unchanged" ? before! : after,
       reason: d.reason,
+      suggestedMovieStatus: d.suggestedMovieStatus,
+      movieStatusReason: d.movieStatusReason,
       excluded: false,
     });
   }
@@ -227,6 +230,18 @@ export function revisePreview(
   const entries = structuredClone(preview.entries);
   if (new Set(edits.map((e) => e.index)).size !== edits.length)
     throw new AppError(400, "Edit each proposal once.");
+  const movieStatuses = new Map<string, Showtime["movieStatus"]>();
+  for (const edit of edits) {
+    const movieId = entries[edit.index]?.after?.movieId;
+    const status = edit.fields?.movieStatus;
+    if (!movieId || !status) continue;
+    if (movieStatuses.has(movieId) && movieStatuses.get(movieId) !== status)
+      throw new AppError(
+        400,
+        "Choose one review status for all showtimes of the same movie.",
+      );
+    movieStatuses.set(movieId, status);
+  }
   for (const edit of edits) {
     const entry = entries[edit.index];
     if (!entry) throw new AppError(400, "Unknown preview entry.");
@@ -241,6 +256,18 @@ export function revisePreview(
           : "update";
     }
     entry.excluded = edit.excluded ?? entry.excluded;
+  }
+  for (const entry of entries) {
+    if (!entry.after || entry.kind === "archive" || entry.kind === "ambiguous")
+      continue;
+    const status = movieStatuses.get(entry.after.movieId);
+    if (!status) continue;
+    entry.after = { ...entry.after, movieStatus: status };
+    entry.kind = !entry.before
+      ? "add"
+      : imported.every((key) => entry.before![key] === entry.after![key])
+        ? "unchanged"
+        : "update";
   }
   const blockers = finalBlockers(snapshot, entries);
   if (blockers.length)

@@ -51,7 +51,7 @@ Return bounded plain JSON instead of storing or signing a plan. This is an edita
 
 Read a consistent database snapshot, release the transaction, then call Gemini. Validate all model references and compute archive decisions in server code. Exact matches may skip AI. Ambiguous matches block destructive application. Missing non-archived screenings are proposed for archival across the selected theater's complete schedule.
 
-Review edits accept only allowlisted fields and exclusions. Validate the resulting schedule and return plain JSON. IDs and movie review status cannot be changed through CSV review.
+Review edits accept only allowlisted fields and exclusions. Validate the resulting schedule and return plain JSON. IDs cannot be changed through CSV review. Administrators can choose a movie review status or explicitly apply an advisory AI suggestion; the selection is shared across the movie’s screenings and saved only on confirmation.
 
 Confirmation rechecks permissions, locks the theater row, checks revision, compares before-values against real database records, validates protected fields and final identities, writes atomically, and increments revision once. Handle affected active rows in two phases when needed to avoid transient uniqueness conflicts. Reload persisted data after success.
 

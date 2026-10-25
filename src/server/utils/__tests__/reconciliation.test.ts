@@ -63,6 +63,76 @@ const match: Proposal = {
     },
   ],
 };
+test("AI status suggestions stay advisory until the administrator chooses a status", () => {
+  const preview = compilePreview(
+    [row],
+    [before],
+    {
+      decisions: [
+        {
+          ...match.decisions[0]!,
+          suggestedMovieStatus: "needs-review",
+          movieStatusReason: "Check the imported metadata.",
+        },
+      ],
+    },
+    metadata,
+  );
+  expect(preview.entries[0]?.suggestedMovieStatus).toBe("needs-review");
+  expect(preview.entries[0]?.movieStatusReason).toBe(
+    "Check the imported metadata.",
+  );
+  expect(preview.entries[0]?.after?.movieStatus).toBe("approved");
+  expect(preview.entries[0]?.kind).toBe("unchanged");
+});
+
+test("movie status edits apply to all screenings of a movie and reject conflicting choices", () => {
+  const later = {
+    ...before,
+    id: "later",
+    startTime: "2025-03-15T21:00:00.000Z",
+    endTime: "2025-03-15T23:00:00.000Z",
+  };
+  const preview = compilePreview(
+    [row, { ...row, startTime: later.startTime, endTime: later.endTime }],
+    [before, later],
+    {
+      decisions: [
+        match.decisions[0]!,
+        { ...match.decisions[0]!, sourceRow: 1, showtimeId: later.id },
+      ],
+    },
+    metadata,
+  );
+  const edits = reviewSchema.shape.edits.parse([
+    { index: 0, fields: { movieStatus: "flagged" } },
+  ]);
+  const revised = revisePreview(preview, [before, later], edits);
+  expect(revised.entries.map((e) => e.after?.movieStatus)).toEqual([
+    "flagged",
+    "flagged",
+  ]);
+  expect(revised.entries.map((e) => e.kind)).toEqual(["update", "update"]);
+  expect(
+    preview.entries.every((e) => e.after?.movieStatus === "approved"),
+  ).toBe(true);
+  expect(() =>
+    revisePreview(
+      preview,
+      [before, later],
+      [
+        { index: 0, fields: { movieStatus: "draft" } },
+        { index: 1, fields: { movieStatus: "approved" } },
+      ],
+    ),
+  ).toThrow("Choose one review status");
+  expect(() =>
+    reviewSchema.shape.edits.parse([
+      { index: 0, fields: { movieStatus: "invalid" } },
+    ]),
+  ).toThrow();
+});
+
 test("exact unchanged schedules bypass AI; minor title spelling preserves identity", () => {
   const exact = exactProposal([{ ...row, movieTitle: "Spider Man" }], [before]);
   expect(exact).not.toBeNull();

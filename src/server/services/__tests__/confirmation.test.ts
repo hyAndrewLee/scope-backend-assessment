@@ -44,7 +44,11 @@ const preview: Preview = {
 };
 
 // An isolated service double, not a SQL/rollback integration test or runtime fallback.
-function databaseDouble(failSecondWrite = false) {
+function databaseDouble(
+  failSecondWrite = false,
+  failMovieWrite = false,
+  role = "admin",
+) {
   const state = {
     row: structuredClone(row),
     revision: 0,
@@ -78,7 +82,7 @@ function databaseDouble(failSecondWrite = false) {
                   id: "u",
                   name: "Admin",
                   email: "a@example.com",
-                  role: "admin",
+                  role,
                   allTheaters: true,
                 },
               ]
@@ -132,7 +136,10 @@ function databaseDouble(failSecondWrite = false) {
               if (table === "theaters") state.revision++;
               else {
                 state.writes++;
-                if (failSecondWrite && state.writes === 2)
+                if (
+                  (failSecondWrite && state.writes === 2) ||
+                  (failMovieWrite && table === "movies")
+                )
                   throw new Error("Simulated write failure");
                 Object.assign(state.row, values);
               }
@@ -144,6 +151,35 @@ function databaseDouble(failSecondWrite = false) {
   };
   return { db: database as unknown as Database, state };
 }
+test("movie status is saved on confirmation, and movie write failures roll back the schedule", async () => {
+  const token: Preview = {
+    ...preview,
+    entries: [
+      {
+        ...preview.entries[0]!,
+        kind: "update",
+        after: { ...row, movieStatus: "flagged" },
+      },
+    ],
+  };
+  const { db, state } = databaseDouble();
+  expect(state.row.movieStatus).toBe("draft");
+  await confirmPreview(db, "u", "t", token);
+  expect(state.row.movieStatus).toBe("flagged");
+  expect(state.revision).toBe(1);
+  expect(state.writes).toBe(3);
+  const failed = databaseDouble(false, true);
+  await expect(confirmPreview(failed.db, "u", "t", token)).rejects.toThrow(
+    "Simulated write failure",
+  );
+  expect(failed.state.row.movieStatus).toBe("draft");
+  expect(failed.state.revision).toBe(0);
+  expect(failed.state.rolledBack).toBe(true);
+  const viewer = databaseDouble(false, false, "viewer");
+  await expect(confirmPreview(viewer.db, "u", "t", token)).rejects.toThrow();
+  expect(viewer.state.writes).toBe(0);
+});
+
 test("confirmation locks, writes, increments once, and rejects replay", async () => {
   const { db, state } = databaseDouble();
   const token = structuredClone(preview);

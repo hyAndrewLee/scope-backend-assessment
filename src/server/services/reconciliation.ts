@@ -123,6 +123,20 @@ export function validateChanges(
     (e) => !e.excluded && e.kind !== "ambiguous",
   );
   const changes = included.filter((e) => e.kind !== "unchanged");
+  const movieStatuses = new Map<string, string>();
+  for (const entry of included) {
+    if (!entry.after || entry.kind === "archive") continue;
+    const { movieId, movieStatus } = entry.after;
+    if (
+      movieStatuses.has(movieId) &&
+      movieStatuses.get(movieId) !== movieStatus
+    )
+      throw new AppError(
+        400,
+        "Choose one review status for all showtimes of the same movie.",
+      );
+    movieStatuses.set(movieId, movieStatus);
+  }
   for (const entry of included) {
     const after = entry.after;
     if (!after || after.theaterId !== preview.theaterId || used.has(after.id))
@@ -135,16 +149,8 @@ export function validateChanges(
           "Invalid addition or screening already exists.",
         );
       const movie = snapshot.find((s) => s.movieId === after.movieId);
-      if (
-        movie
-          ? after.movieTitle !== movie.movieTitle ||
-            after.movieStatus !== movie.movieStatus
-          : after.movieStatus !== "draft"
-      )
-        throw new AppError(
-          400,
-          "Import cannot change movie identity or review status.",
-        );
+      if (movie && after.movieTitle !== movie.movieTitle)
+        throw new AppError(400, "Import cannot change movie identity.");
       if (
         !movie &&
         snapshot.some(
@@ -180,18 +186,9 @@ export function validateChanges(
       fields.some((key) => actual[key] !== entry.before![key])
     )
       throw new AppError(409, "Reviewed screening changed; upload again.");
-    const immutable = [
-      "id",
-      "theaterId",
-      "movieId",
-      "movieTitle",
-      "movieStatus",
-    ] as const;
+    const immutable = ["id", "theaterId", "movieId", "movieTitle"] as const;
     if (immutable.some((key) => actual[key] !== after[key]))
-      throw new AppError(
-        400,
-        "Import cannot change screening identity or movie review status.",
-      );
+      throw new AppError(400, "Import cannot change screening identity.");
     if (
       entry.kind === "archive" &&
       (after.status !== "archived" ||
@@ -243,10 +240,8 @@ export async function confirmPreview(
       capabilities.auditoriums,
       capabilities.movies,
     );
-    const changes = validateConfirmation(
-      checked,
-      await readSnapshot(tx, theaterId),
-    );
+    const snapshot = await readSnapshot(tx, theaterId);
+    const changes = validateConfirmation(checked, snapshot);
     if (!changes.length) throw new AppError(409, "No changes to confirm.");
     // Deactivate affected rows before reactivation, preserving the partial unique index during swaps.
     for (const entry of changes)
@@ -289,8 +284,7 @@ export async function confirmPreview(
         if (
           !movie ||
           movie.theaterId !== theaterId ||
-          movie.title !== after.movieTitle ||
-          movie.movieStatus !== after.movieStatus
+          movie.title !== after.movieTitle
         )
           throw new AppError(409, "Movie identity conflict.");
       }
@@ -316,6 +310,22 @@ export async function confirmPreview(
           .set(values)
           .where(
             and(eq(showtimes.id, after.id), eq(showtimes.theaterId, theaterId)),
+          );
+    }
+    // Movie review status belongs to the movie, including screenings not in this upload.
+    const updatedMovies = new Set<string>();
+    for (const entry of changes) {
+      const after = entry.after!;
+      if (entry.kind === "archive" || updatedMovies.has(after.movieId))
+        continue;
+      updatedMovies.add(after.movieId);
+      const existing = snapshot.find((s) => s.movieId === after.movieId);
+      if (existing && existing.movieStatus !== after.movieStatus)
+        await tx
+          .update(movies)
+          .set({ movieStatus: after.movieStatus })
+          .where(
+            and(eq(movies.id, after.movieId), eq(movies.theaterId, theaterId)),
           );
     }
     await advanceRevision(tx, theaterId);

@@ -4,11 +4,7 @@ import { proposalSchema } from "../../../features/reconciliation/schemas";
 import { errorResponse } from "../../errors";
 
 test("missing AI configuration fails honestly without a provider call or fabricated preview", async () => {
-  const keys = [
-    "DATABASE_URL",
-    "APP_ORIGIN",
-    "GEMINI_API_KEY",
-  ] as const;
+  const keys = ["DATABASE_URL", "APP_ORIGIN", "GEMINI_API_KEY"] as const;
   const previous = Object.fromEntries(
     keys.map((key) => [key, process.env[key]]),
   );
@@ -29,10 +25,21 @@ test("missing AI configuration fails honestly without a provider call or fabrica
   }
 });
 test("provider schema does not replace strict domain validation", () => {
-  const output = { decisions: [{
-    sourceRow: -1, kind: "match", showtimeId: "invalid id", movieId: null,
-    title: null, auditorium: null, reason: "Candidate match",
-  }] };
+  const output = {
+    decisions: [
+      {
+        sourceRow: -1,
+        kind: "match",
+        showtimeId: "invalid id",
+        movieId: null,
+        title: null,
+        auditorium: null,
+        suggestedMovieStatus: null,
+        movieStatusReason: null,
+        reason: "Candidate match",
+      },
+    ],
+  };
   expect(aiProposalSchema.safeParse(output).success).toBe(true);
   expect(proposalSchema.safeParse(output).success).toBe(false);
 });

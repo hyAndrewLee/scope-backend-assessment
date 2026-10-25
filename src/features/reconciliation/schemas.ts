@@ -107,6 +107,8 @@ export const proposalSchema = z
             movieId: idSchema.nullable(),
             title: text.nullable(),
             auditorium: text.max(128).nullable(),
+            suggestedMovieStatus: movieStatusSchema.nullable().optional(),
+            movieStatusReason: text.max(512).nullable().optional(),
             reason: text.max(512),
           })
           .strict(),
@@ -123,6 +125,8 @@ export const entrySchema = z
     before: showtimeSchema.nullable(),
     after: showtimeSchema.nullable(),
     reason: text.max(512),
+    suggestedMovieStatus: movieStatusSchema.nullable().optional(),
+    movieStatusReason: text.max(512).nullable().optional(),
     excluded: z.boolean().default(false),
   })
   .strict();
@@ -168,6 +172,7 @@ export const editSchema = z
     excluded: z.boolean().optional(),
     fields: fieldsSchema
       .omit({ partnerLastUpdated: true })
+      .extend({ movieStatus: movieStatusSchema })
       .partial()
       .optional(),
   })

@@ -58,9 +58,8 @@ test("confirmation applies included changes only and rechecks current rows", () 
     validateConfirmation({ ...preview, blockers: ["unsafe"] }, [row]),
   ).toThrow();
 });
-test("unsigned changes cannot mutate identity or review status", () => {
+test("admin preview edits cannot mutate movie identity", () => {
   for (const fields of [
-    { movieStatus: "approved" as const },
     { movieId: "foreign" },
     { movieTitle: "Different movie" },
     { theaterId: "other" },
@@ -93,7 +92,7 @@ test("archive and unchanged labels cannot hide arbitrary field changes", () => {
     expect(() => validateConfirmation(forged, [row])).toThrow();
   }
 });
-test("additions cannot grant movie review status or bypass final active identities", () => {
+test("additions allow reviewed statuses but cannot bypass active identities", () => {
   const entry = {
     ...preview.entries[0]!,
     kind: "add" as const,
@@ -122,7 +121,7 @@ test("additions cannot grant movie review status or bypass final active identiti
       },
       [row],
     ),
-  ).toThrow();
+  ).not.toThrow();
   const other = {
     ...entry,
     after: {
@@ -140,6 +139,46 @@ test("additions cannot grant movie review status or bypass final active identiti
     validateConfirmation({ ...preview, entries: [first, other] }, [row]),
   ).toThrow();
 });
+test("administrator status-only edits are valid but contradictory movie statuses are rejected", () => {
+  const changed = {
+    ...preview.entries[0]!,
+    kind: "update" as const,
+    after: { ...row, movieStatus: "flagged" as const },
+  };
+  expect(
+    validateConfirmation({ ...preview, entries: [changed] }, [row]),
+  ).toHaveLength(1);
+  const later = {
+    ...row,
+    id: "later",
+    startTime: "2025-01-01T14:00:00.000Z",
+    endTime: "2025-01-01T16:00:00.000Z",
+  };
+  expect(() =>
+    validateConfirmation(
+      {
+        ...preview,
+        entries: [
+          changed,
+          {
+            ...changed,
+            kind: "unchanged",
+            before: later,
+            after: later,
+          },
+        ],
+      },
+      [row, later],
+    ),
+  ).toThrow("Choose one review status");
+  expect(() =>
+    validateConfirmation(
+      { ...preview, entries: [{ ...changed, kind: "unchanged" }] },
+      [row],
+    ),
+  ).toThrow("Unchanged entries");
+});
+
 test("validated admin changes remain editable without a cryptographic secret", () => {
   const entry = {
     ...preview.entries[0]!,

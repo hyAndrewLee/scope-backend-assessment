@@ -21,6 +21,7 @@ const labels: Record<string, string> = {
   ambiguous: "Needs your review",
   partnerTitle: "Movie title in your file",
   movieTitle: "Movie title",
+  movieStatus: "Movie status",
   movie_title: "Movie title",
   theaterName: "Theater",
   partnerLastUpdated: "Last updated",

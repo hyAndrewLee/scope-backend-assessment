@@ -13,8 +13,8 @@
     "lint": "bun --bun eslint .",
     "typecheck": "bun --bun tsc --noEmit",
     "check": "bun run lint && bun run typecheck && bun test",
-    "db:check": "bun scripts/check-database.ts",
-    "db:seed": "bun scripts/seed.ts"
+    "db:check": "bun --conditions=react-server scripts/check-database.ts",
+    "db:seed": "bun --conditions=react-server scripts/seed.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "4.0.105",

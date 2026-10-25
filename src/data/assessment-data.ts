@@ -1,4 +1,10 @@
-import type { AssessmentUser, MovieStatus, PreviewChanges, Showtime, Theater } from "~/types/assessment";
+// Explicit seed input only. Never import into application runtime code.
+import type {
+  AssessmentUser,
+  MovieStatus,
+  Showtime,
+  Theater,
+} from "~/types/assessment";
 
 const theaters: Theater[] = [
   {
@@ -279,111 +285,9 @@ const showtimes: Showtime[] = [
   },
 ];
 
-const previewChangesByTheater: Record<string, PreviewChanges> = {
-  "theater-downtown": {
-    adds: [
-      {
-        movieTitle: "Kung Fu Panda 4",
-        auditorium: "Auditorium 3",
-        startTime: "2025-03-15T11:30:00Z",
-        endTime: "2025-03-15T13:05:00Z",
-        language: "EN",
-        format: "2D",
-        rating: "PG",
-      },
-    ],
-    updates: [
-      {
-        id: "st-dt-001",
-        movieTitle: "Spider-Man: Homecoming",
-        startTime: "2025-03-15T18:00:00Z",
-        endTime: "2025-03-15T20:13:00Z",
-        diffs: [
-          {
-            field: "auditorium",
-            oldValue: "Auditorium 1",
-            newValue: "Aud 1",
-          },
-          {
-            field: "movieTitle",
-            oldValue: "Spider-Man: Homecoming",
-            newValue: "Spider Man - Homecoming",
-          },
-        ],
-      },
-      {
-        id: "st-dt-002",
-        movieTitle: "Inside Out 2",
-        startTime: "2025-03-15T17:30:00Z",
-        endTime: "2025-03-15T19:20:00Z",
-        diffs: [
-          {
-            field: "auditorium",
-            oldValue: "Auditorium 2",
-            newValue: "Auditorium Two",
-          },
-          {
-            field: "movieTitle",
-            oldValue: "Inside Out 2",
-            newValue: "Inside   Out  2",
-          },
-        ],
-      },
-      {
-        id: "st-dt-003",
-        movieTitle: "Dune: Part Two",
-        startTime: "2025-03-15T20:00:00Z",
-        endTime: "2025-03-15T22:46:00Z",
-        diffs: [
-          {
-            field: "format",
-            oldValue: "2D",
-            newValue: "IMAX",
-          },
-          {
-            field: "auditorium",
-            oldValue: "Auditorium 1",
-            newValue: "Auditorium 1 (Laser)",
-          },
-          {
-            field: "movieTitle",
-            oldValue: "Dune: Part Two",
-            newValue: "DUNE PART 2",
-          },
-        ],
-      },
-    ],
-    archives: [
-      {
-        id: "st-dt-005",
-        movieTitle: "Wonka",
-        startTime: "2025-03-15T16:00:00Z",
-        endTime: "2025-03-15T17:56:00Z",
-      },
-      {
-        id: "st-dt-006",
-        movieTitle: "Oppenheimer",
-        startTime: "2025-03-15T21:00:00Z",
-        endTime: "2025-03-16T00:00:00Z",
-      },
-    ],
-  },
-  "theater-riverside": {
-    adds: [],
-    updates: [],
-    archives: [],
-  },
-  "theater-uptown": {
-    adds: [],
-    updates: [],
-    archives: [],
-  },
-};
-
 export const assessmentData = {
   theaters,
   users,
   showtimes,
   movieStatusOptions,
-  previewChangesByTheater,
 };

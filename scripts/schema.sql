@@ -15,16 +15,23 @@ CREATE TABLE user_theaters (
  user_id text NOT NULL REFERENCES users(id), theater_id text NOT NULL REFERENCES theaters(id),
  PRIMARY KEY(user_id,theater_id)
 );
+CREATE TABLE auditoriums (
+ id text PRIMARY KEY, theater_id text NOT NULL REFERENCES theaters(id), name text NOT NULL,
+ supported_formats text[] NOT NULL CONSTRAINT auditoriums_formats CHECK (cardinality(supported_formats) > 0 AND supported_formats <@ ARRAY['2D','3D','IMAX']::text[]),
+ CONSTRAINT auditoriums_theater_identity UNIQUE(theater_id,id),
+ CONSTRAINT auditoriums_theater_name UNIQUE(theater_id,name)
+);
 CREATE TABLE movies (
  id text PRIMARY KEY, theater_id text NOT NULL REFERENCES theaters(id),
  title text NOT NULL CONSTRAINT movies_title CHECK (length(title) BETWEEN 1 AND 256),
+ supported_formats text[] NOT NULL CONSTRAINT movies_formats CHECK (cardinality(supported_formats) > 0 AND supported_formats <@ ARRAY['2D','3D','IMAX']::text[]),
  movie_status text NOT NULL DEFAULT 'draft' CONSTRAINT movies_status CHECK (movie_status IN ('approved','draft','flagged','needs-review')),
  CONSTRAINT movies_theater_identity UNIQUE(theater_id,id)
 );
 CREATE INDEX movies_title_search ON movies USING gin(title gin_trgm_ops);
 CREATE TABLE showtimes (
  id text PRIMARY KEY, theater_id text NOT NULL, movie_id text NOT NULL,
- partner_title text NOT NULL, auditorium text NOT NULL,
+ partner_title text NOT NULL, auditorium_id text NOT NULL,
  start_time timestamptz NOT NULL, end_time timestamptz NOT NULL,
  language text NOT NULL CONSTRAINT showtimes_language CHECK (language IN ('EN','KO','JA','FR')),
  format text NOT NULL CONSTRAINT showtimes_format CHECK (format IN ('2D','3D','IMAX')),
@@ -32,23 +39,37 @@ CREATE TABLE showtimes (
  partner_last_updated timestamptz NOT NULL, last_updated timestamptz NOT NULL,
  status text NOT NULL CONSTRAINT showtimes_status CHECK (status IN ('active','inactive','archived')),
  FOREIGN KEY(theater_id,movie_id) REFERENCES movies(theater_id,id),
+ FOREIGN KEY(theater_id,auditorium_id) REFERENCES auditoriums(theater_id,id),
  CONSTRAINT showtimes_time_order CHECK (end_time > start_time),
- CONSTRAINT showtimes_names CHECK (length(partner_title) BETWEEN 1 AND 256 AND length(auditorium) BETWEEN 1 AND 128)
+ CONSTRAINT showtimes_names CHECK (length(partner_title) BETWEEN 1 AND 256)
 );
 CREATE UNIQUE INDEX showtimes_active_identity ON showtimes(theater_id,movie_id,start_time) WHERE status='active';
 CREATE INDEX showtimes_theater_start ON showtimes(theater_id,start_time,id);
+-- Backstop for every active screening write, including direct SQL.
+CREATE FUNCTION check_projection_format() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.status = 'active' AND NOT EXISTS (
+  SELECT 1 FROM movies m JOIN auditoriums a ON a.theater_id=m.theater_id
+  WHERE m.id=NEW.movie_id AND a.id=NEW.auditorium_id AND m.theater_id=NEW.theater_id
+    AND NEW.format=ANY(m.supported_formats) AND NEW.format=ANY(a.supported_formats)
+ ) THEN RAISE EXCEPTION 'Unsupported movie/auditorium format' USING ERRCODE='23514'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER showtimes_projection BEFORE INSERT OR UPDATE ON showtimes FOR EACH ROW EXECUTE FUNCTION check_projection_format();
 -- Server connection only; no direct hosted data-API access.
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE theaters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_theaters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE auditoriums ENABLE ROW LEVEL SECURITY;
 ALTER TABLE movies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE showtimes ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON users,theaters,user_theaters,movies,showtimes FROM PUBLIC;
+REVOKE ALL ON users,theaters,user_theaters,auditoriums,movies,showtimes FROM PUBLIC;
 -- The runtime role must be a dedicated server role, never anon/authenticated.
 GRANT USAGE ON SCHEMA public TO :"runtime_role";
-GRANT SELECT,INSERT,UPDATE,DELETE ON users,theaters,user_theaters,movies,showtimes TO :"runtime_role";
+GRANT SELECT,INSERT,UPDATE,DELETE ON users,theaters,user_theaters,auditoriums,movies,showtimes TO :"runtime_role";
 CREATE POLICY server_access ON users TO :"runtime_role" USING (true) WITH CHECK (true);
 CREATE POLICY server_access ON theaters TO :"runtime_role" USING (true) WITH CHECK (true);
 CREATE POLICY server_access ON user_theaters TO :"runtime_role" USING (true) WITH CHECK (true);
+CREATE POLICY server_access ON auditoriums TO :"runtime_role" USING (true) WITH CHECK (true);
 CREATE POLICY server_access ON movies TO :"runtime_role" USING (true) WITH CHECK (true);
 CREATE POLICY server_access ON showtimes TO :"runtime_role" USING (true) WITH CHECK (true);

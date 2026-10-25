@@ -6,7 +6,6 @@ test("missing AI configuration fails honestly without a provider call or fabrica
   const keys = [
     "DATABASE_URL",
     "APP_ORIGIN",
-    "PREVIEW_SIGNING_SECRET",
     "GEMINI_API_KEY",
   ] as const;
   const previous = Object.fromEntries(
@@ -15,7 +14,6 @@ test("missing AI configuration fails honestly without a provider call or fabrica
   Object.assign(process.env, {
     DATABASE_URL: "postgres://app:password@db.example.com/app",
     APP_ORIGIN: "http://localhost:3000",
-    PREVIEW_SIGNING_SECRET: "a".repeat(64),
   });
   delete process.env.GEMINI_API_KEY;
   try {

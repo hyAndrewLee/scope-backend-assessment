@@ -26,7 +26,6 @@ const preview: Preview = {
   personaId: "u",
   theaterId: "t",
   revision: 0,
-  expiresAt: Date.now() + 60000,
   model: "test",
   blockers: [],
   entries: [
@@ -58,6 +57,98 @@ test("confirmation applies included changes only and rechecks current rows", () 
   expect(() =>
     validateConfirmation({ ...preview, blockers: ["unsafe"] }, [row]),
   ).toThrow();
+});
+test("unsigned changes cannot mutate identity or review status", () => {
+  for (const fields of [
+    { movieStatus: "approved" as const },
+    { movieId: "foreign" },
+    { movieTitle: "Different movie" },
+    { theaterId: "other" },
+  ]) {
+    const forged = {
+      ...preview,
+      entries: [
+        {
+          ...preview.entries[0]!,
+          kind: "update" as const,
+          after: { ...row, ...fields },
+        },
+      ],
+    };
+    expect(() => validateConfirmation(forged, [row])).toThrow();
+  }
+});
+test("archive and unchanged labels cannot hide arbitrary field changes", () => {
+  for (const kind of ["archive", "unchanged"] as const) {
+    const forged = {
+      ...preview,
+      entries: [
+        {
+          ...preview.entries[0]!,
+          kind,
+          after: { ...row, auditorium: "Other room" },
+        },
+      ],
+    };
+    expect(() => validateConfirmation(forged, [row])).toThrow();
+  }
+});
+test("additions cannot grant movie review status or bypass final active identities", () => {
+  const entry = {
+    ...preview.entries[0]!,
+    kind: "add" as const,
+    before: null,
+    sourceRow: 0,
+    after: { ...row, id: "new" },
+  };
+  expect(() =>
+    validateConfirmation({ ...preview, entries: [entry] }, [row]),
+  ).toThrow();
+  expect(() =>
+    validateConfirmation(
+      {
+        ...preview,
+        entries: [
+          {
+            ...entry,
+            after: {
+              ...entry.after,
+              movieId: "new-movie",
+              movieTitle: "New film",
+              movieStatus: "approved",
+            },
+          },
+        ],
+      },
+      [row],
+    ),
+  ).toThrow();
+  const other = {
+    ...entry,
+    after: {
+      ...entry.after,
+      id: "second",
+      movieId: "another-id",
+      movieTitle: "New film",
+    },
+  };
+  const first = {
+    ...entry,
+    after: { ...entry.after, movieId: "first-id", movieTitle: "New film" },
+  };
+  expect(() =>
+    validateConfirmation({ ...preview, entries: [first, other] }, [row]),
+  ).toThrow();
+});
+test("validated admin changes remain editable without a cryptographic secret", () => {
+  const entry = {
+    ...preview.entries[0]!,
+    kind: "update" as const,
+    after: { ...row, auditorium: "Other room" },
+  };
+  expect(
+    validateConfirmation({ ...preview, entries: [entry] }, [row]),
+  ).toHaveLength(1);
 });
 test("stale or consumed revisions reject replay", () => {
   expect(() => assertRevision(0, 0)).not.toThrow();

@@ -36,7 +36,6 @@ const preview: Preview = {
   personaId: "u",
   theaterId: "t",
   revision: 0,
-  expiresAt: Date.now() + 60000,
   model: "test",
   blockers: [],
   entries: [

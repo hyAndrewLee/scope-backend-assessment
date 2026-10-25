@@ -4,7 +4,6 @@ import type { Database } from "../database";
 import { theaters } from "../schema/theaters";
 import { movies } from "../schema/movies";
 import { showtimes } from "../schema/showtimes";
-import { getSettings } from "../../env.js";
 import { AppError } from "../errors";
 import { csvHeaders, parseCsv, uniqueRows } from "../utils/csv";
 import { exactHeaders } from "../utils/headers";
@@ -17,7 +16,9 @@ import {
   finalBlockers,
   revisePreview,
 } from "../utils/reconciliation";
-import { signPreview, verifyPreview } from "../utils/preview";
+import { readPreview } from "../utils/preview";
+import { showtimeSchema } from "../../features/reconciliation/schemas";
+import { nameKey } from "../utils/reconciliation";
 import { generateProposal } from "../ai/model";
 import { assertAccess, requireUser } from "./users";
 import {
@@ -28,7 +29,6 @@ import {
 } from "./schedule";
 import type {
   Preview,
-  SignedPreview,
   reviewSchema,
 } from "../../features/reconciliation/schemas";
 
@@ -80,7 +80,6 @@ export async function createPreview(
     personaId,
     theaterId,
     revision: snapshot.theater.revision,
-    expiresAt: Date.now() + 15 * 60000,
     model: generated.model,
     headerMappings: headers.flatMap((from, i) =>
       from === mapping[i] ? [] : [{ from, to: mapping[i]! }],
@@ -91,7 +90,7 @@ export async function createPreview(
     snapshot.capabilities.auditoriums,
     snapshot.capabilities.movies,
   );
-  return signPreview(preview, getSettings().PREVIEW_SIGNING_SECRET);
+  return readPreview(preview, personaId, theaterId);
 }
 export async function reviewPreview(
   db: Database,
@@ -99,62 +98,142 @@ export async function reviewPreview(
   theaterId: string,
   input: z.infer<typeof reviewSchema>,
 ) {
-  const secret = getSettings().PREVIEW_SIGNING_SECRET;
-  const preview = verifyPreview(input.preview, secret, personaId, theaterId);
+  const preview = readPreview(input.preview, personaId, theaterId);
   const snapshot = await snapshotFor(db, personaId, theaterId);
   assertRevision(snapshot.theater.revision, preview.revision);
-  return signPreview(
+  const revised = revisePreview(preview, snapshot.rows, input.edits);
+  validateChanges(revised, snapshot.rows);
+  return readPreview(
     validateAssignments(
-      revisePreview(preview, snapshot.rows, input.edits),
+      revised,
       snapshot.capabilities.auditoriums,
       snapshot.capabilities.movies,
     ),
-    secret,
+    personaId,
+    theaterId,
   );
 }
-export function validateConfirmation(
+export function validateChanges(
   preview: Preview,
   snapshot: Awaited<ReturnType<typeof readSnapshot>>,
 ) {
-  if (
-    preview.blockers.length ||
-    finalBlockers(snapshot, preview.entries).length
-  )
-    throw new AppError(409, "Resolve preview blockers before confirming.");
   const known = new Map(snapshot.map((s) => [s.id, s]));
   const used = new Set<string>();
-  const changes = preview.entries.filter(
-    (e) => !e.excluded && ["add", "update", "archive"].includes(e.kind),
+  const included = preview.entries.filter(
+    (e) => !e.excluded && e.kind !== "ambiguous",
   );
-  for (const entry of changes) {
+  const changes = included.filter((e) => e.kind !== "unchanged");
+  for (const entry of included) {
     const after = entry.after;
     if (!after || after.theaterId !== preview.theaterId || used.has(after.id))
       throw new AppError(400, "Invalid preview target.");
     used.add(after.id);
     if (entry.kind === "add") {
-      if (known.has(after.id))
-        throw new AppError(409, "Preview addition already exists.");
-    } else if (
-      !entry.before ||
-      JSON.stringify(known.get(after.id)) !== JSON.stringify(entry.before)
-    ) {
-      throw new AppError(409, "Reviewed screening changed; upload again.");
+      if (entry.before || known.has(after.id) || after.status !== "active")
+        throw new AppError(
+          409,
+          "Invalid addition or screening already exists.",
+        );
+      const movie = snapshot.find((s) => s.movieId === after.movieId);
+      if (
+        movie
+          ? after.movieTitle !== movie.movieTitle ||
+            after.movieStatus !== movie.movieStatus
+          : after.movieStatus !== "draft"
+      )
+        throw new AppError(
+          400,
+          "Import cannot change movie identity or review status.",
+        );
+      if (
+        !movie &&
+        snapshot.some(
+          (s) => nameKey(s.movieTitle) === nameKey(after.movieTitle),
+        )
+      )
+        throw new AppError(409, "Reuse the existing movie identity.");
+      if (
+        changes.some(
+          (e) =>
+            e.kind === "add" &&
+            e.after &&
+            e.after.movieId !== after.movieId &&
+            nameKey(e.after.movieTitle) === nameKey(after.movieTitle),
+        )
+      )
+        throw new AppError(
+          409,
+          "New screenings of the same title must reuse one movie identity.",
+        );
+      const other = changes.find(
+        (e) => e !== entry && e.after?.movieId === after.movieId,
+      );
+      if (other?.after && other.after.movieTitle !== after.movieTitle)
+        throw new AppError(400, "Inconsistent movie identity.");
+      continue;
     }
+    const actual = known.get(after.id);
+    const fields = showtimeSchema.keyof().options;
+    if (
+      !actual ||
+      !entry.before ||
+      fields.some((key) => actual[key] !== entry.before![key])
+    )
+      throw new AppError(409, "Reviewed screening changed; upload again.");
+    const immutable = [
+      "id",
+      "theaterId",
+      "movieId",
+      "movieTitle",
+      "movieStatus",
+    ] as const;
+    if (immutable.some((key) => actual[key] !== after[key]))
+      throw new AppError(
+        400,
+        "Import cannot change screening identity or movie review status.",
+      );
+    if (
+      entry.kind === "archive" &&
+      (after.status !== "archived" ||
+        fields.some(
+          (key) =>
+            key !== "status" &&
+            key !== "lastUpdated" &&
+            actual[key] !== after[key],
+        ))
+    )
+      throw new AppError(400, "Archival cannot modify unrelated fields.");
+    if (entry.kind === "update" && after.status !== "active")
+      throw new AppError(400, "Import updates must be active screenings.");
+    if (
+      entry.kind === "unchanged" &&
+      fields.some((key) => actual[key] !== after[key])
+    )
+      throw new AppError(400, "Unchanged entries must match the database.");
   }
+  return changes;
+}
+export function validateConfirmation(
+  preview: Preview,
+  snapshot: Awaited<ReturnType<typeof readSnapshot>>,
+) {
+  const changes = validateChanges(preview, snapshot);
+  // Recompute final identities from actual DB rows plus validated writes, not client 'unchanged' rows.
+  const candidates = [
+    ...changes,
+    ...preview.entries.filter((e) => e.kind === "ambiguous"),
+  ];
+  if (preview.blockers.length || finalBlockers(snapshot, candidates).length)
+    throw new AppError(409, "Resolve preview blockers before confirming.");
   return changes;
 }
 export async function confirmPreview(
   db: Database,
   personaId: string,
   theaterId: string,
-  token: SignedPreview,
+  input: Preview,
 ) {
-  const preview = verifyPreview(
-    token,
-    getSettings().PREVIEW_SIGNING_SECRET,
-    personaId,
-    theaterId,
-  );
+  const preview = readPreview(input, personaId, theaterId);
   return db.transaction(async (tx) => {
     const theater = await lockTheater(tx, personaId, theaterId);
     assertRevision(theater.revision, preview.revision);
@@ -210,7 +289,8 @@ export async function confirmPreview(
         if (
           !movie ||
           movie.theaterId !== theaterId ||
-          movie.title !== after.movieTitle
+          movie.title !== after.movieTitle ||
+          movie.movieStatus !== after.movieStatus
         )
           throw new AppError(409, "Movie identity conflict.");
       }

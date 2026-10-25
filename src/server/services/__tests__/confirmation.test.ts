@@ -2,13 +2,11 @@ import { test, expect } from "bun:test";
 import { getTableName } from "drizzle-orm";
 import type { Database } from "../../database";
 import { confirmPreview } from "../reconciliation";
-import { signPreview } from "../../utils/preview";
 import {
   showtimeSchema,
   type Preview,
 } from "../../../features/reconciliation/schemas";
 
-const secret = "test-secret-".repeat(4);
 const row = showtimeSchema.parse({
   id: "s",
   theaterId: "t",
@@ -30,7 +28,6 @@ const preview: Preview = {
   personaId: "u",
   theaterId: "t",
   revision: 0,
-  expiresAt: Date.now() + 60000,
   model: "test",
   blockers: [],
   entries: [
@@ -147,53 +144,28 @@ function databaseDouble(failSecondWrite = false) {
   };
   return { db: database as unknown as Database, state };
 }
-async function configured(action: () => Promise<void>) {
-  const keys = [
-    "DATABASE_URL",
-    "APP_ORIGIN",
-    "PREVIEW_SIGNING_SECRET",
-  ] as const;
-  const previous = Object.fromEntries(
-    keys.map((key) => [key, process.env[key]]),
-  );
-  Object.assign(process.env, {
-    DATABASE_URL: "postgres://app:password@db.example.com/app",
-    APP_ORIGIN: "http://localhost:3000",
-    PREVIEW_SIGNING_SECRET: secret,
+test("confirmation locks, writes, increments once, and rejects replay", async () => {
+  const { db, state } = databaseDouble();
+  const token = structuredClone(preview);
+  expect(await confirmPreview(db, "u", "t", token)).toMatchObject({
+    archived: 1,
+    revision: 1,
   });
-  try {
-    await action();
-  } finally {
-    for (const key of keys) {
-      if (previous[key] === undefined) delete process.env[key];
-      else process.env[key] = previous[key];
-    }
-  }
-}
-test("confirmation locks, writes, increments once, and rejects replay", async () =>
-  configured(async () => {
-    const { db, state } = databaseDouble();
-    const token = signPreview(preview, secret);
-    expect(await confirmPreview(db, "u", "t", token)).toMatchObject({
-      archived: 1,
-      revision: 1,
-    });
-    expect(state.row.status).toBe("archived");
-    expect(state.locks).toBe(1);
-    expect(state.writes).toBe(2);
-    await expect(confirmPreview(db, "u", "t", token)).rejects.toThrow(
-      "Schedule changed",
-    );
-    expect(state.revision).toBe(1);
-    expect(state.writes).toBe(2);
-  }));
-test("a write failure escapes the transaction without a success result", async () =>
-  configured(async () => {
-    const { db, state } = databaseDouble(true);
-    await expect(
-      confirmPreview(db, "u", "t", signPreview(preview, secret)),
-    ).rejects.toThrow("Simulated write failure");
-    expect(state.rolledBack).toBe(true);
-    expect(state.row.status).toBe("active");
-    expect(state.revision).toBe(0);
-  }));
+  expect(state.row.status).toBe("archived");
+  expect(state.locks).toBe(1);
+  expect(state.writes).toBe(2);
+  await expect(confirmPreview(db, "u", "t", token)).rejects.toThrow(
+    "Schedule changed",
+  );
+  expect(state.revision).toBe(1);
+  expect(state.writes).toBe(2);
+});
+test("a write failure escapes the transaction without a success result", async () => {
+  const { db, state } = databaseDouble(true);
+  await expect(confirmPreview(db, "u", "t", preview)).rejects.toThrow(
+    "Simulated write failure",
+  );
+  expect(state.rolledBack).toBe(true);
+  expect(state.row.status).toBe("active");
+  expect(state.revision).toBe(0);
+});

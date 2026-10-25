@@ -48,7 +48,6 @@ const metadata = {
   personaId: "admin",
   theaterId: "downtown",
   revision: 0,
-  expiresAt: Date.now() + 60000,
   model: "test",
 };
 const match: Proposal = {
@@ -146,7 +145,7 @@ test("ambiguity blocks confirmation and removes archival; exclusion can resolve 
     [{ index: 0, excluded: true }],
   );
   expect(revised.blockers).toHaveLength(0);
-  expect(revised.expiresAt).toBe(preview.expiresAt);
+  expect(revised.revision).toBe(preview.revision);
 });
 test("review edits validate time order, immutable fields, exclusions and duplicate identities", () => {
   const preview = compilePreview([row], [before], match, metadata);

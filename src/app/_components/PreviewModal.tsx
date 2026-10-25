@@ -248,10 +248,7 @@ export function PreviewModal({
                 );
               })}
               <p className="text-xs text-gray-500">
-                Revision {preview?.revision} · {preview?.model} · Expires{" "}
-                {preview
-                  ? new Date(preview.expiresAt).toLocaleTimeString()
-                  : ""}
+                Revision {preview?.revision} · {preview?.model}
               </p>
             </>
           )}

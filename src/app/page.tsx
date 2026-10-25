@@ -10,10 +10,9 @@ import {
   userSchema,
   theaterSchema,
   schedulePageSchema,
-  signedPreviewSchema,
   previewSchema,
   movieStatusSchema,
-  type SignedPreview,
+  type Preview,
   type reviewSchema,
 } from "~/features/reconciliation/schemas";
 import { FileUpload } from "./_components/FileUpload";
@@ -38,7 +37,7 @@ export default function Home() {
   const [theaterId, setTheaterId] = useState("all");
   const [filters, setFilters] = useState(filtersSchema.parse({}));
   const debounced = useDebounce(filters, 300);
-  const [token, setToken] = useState<SignedPreview | null>(null);
+  const [token, setToken] = useState<Preview | null>(null);
   const [previewFailure, setPreviewFailure] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -76,14 +75,14 @@ export default function Home() {
         ).data,
       ),
   });
-  const preview = token ? previewSchema.parse(JSON.parse(token.payload)) : null;
+  const preview = token;
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ["schedule", userId] });
   };
   const upload = useMutation({
     mutationFn: async (file: File) => {
       if (file.size > 262144) throw new Error("CSV exceeds 256 KiB.");
-      return signedPreviewSchema.parse(
+      return previewSchema.parse(
         (
           await axios.post<unknown>(
             `/api/theaters/${theaterId}/preview`,
@@ -108,7 +107,7 @@ export default function Home() {
   });
   const review = useMutation({
     mutationFn: async (edits: Edits) =>
-      signedPreviewSchema.parse(
+      previewSchema.parse(
         (
           await axios.post<unknown>(
             `/api/theaters/${theaterId}/preview/review`,
@@ -447,7 +446,7 @@ export default function Home() {
           Date filters use inclusive UTC days.
         </p>
         <PreviewModal
-          key={token?.signature ?? previewFailure ?? "closed"}
+          key={previewFailure ?? (preview ? "preview" : "closed")}
           preview={preview}
           failure={previewFailure}
           busy={busy}

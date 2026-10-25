@@ -14,12 +14,10 @@ cp .env.example .env.local # only if .env.local does not already exist
 Fill in the server-only settings in `.env.local`:
 
 - `DATABASE_URL`: hosted Postgres connection string, including credentials. Loopback URLs and unverified TLS modes are rejected. There is no local database or data fallback.
-- `DATABASE_SSL_CA`: optional provider public CA as PEM; literal `\n` escapes work. TLS verification stays enabled.
 - `APP_ORIGIN`: exact application origin, such as `http://localhost:3000`.
-- `PREVIEW_SIGNING_SECRET`: generate with `bun -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))'`. Keep it secret and identical across server instances.
 - `GEMINI_API_KEY` and `GEMINI_MODEL`: a real Google project key and a structured-output-capable model available to that project. The configurable default is `gemini-2.5-flash`; its current project availability is not guaranteed. Missing AI configuration fails preview honestly, never with fabricated output.
 
-No credentials belong in `NEXT_PUBLIC_*` variables or Git.
+No credentials belong in `NEXT_PUBLIC_*` variables or Git. Supabase's public CA is bundled automatically for its database/pooler hosts; certificate verification remains enabled. No CA or preview-signing environment variable is needed.
 
 ### Empty hosted database only
 
@@ -44,7 +42,7 @@ Open `http://localhost:3000`, select a demo persona, and choose one theater or a
 - Server-side search, filters, sort, pagination, totals, active counts, and dropdown options. Dates use inclusive UTC days. Title substring search has a trigram index; no separate search service.
 - Admin personas may upload, clear, and edit statuses only for accessible theaters. Viewer responses omit movie review status. Some/none/all memberships are supported independently of role.
 - A CSV describes **one theater's complete schedule**, not just filtered dates. Missing non-archived screenings are proposed for archival, never deletion. Clear Schedule also archives.
-- CSV headers: `movie_title,theater_name,auditorium,start_time,end_time,language,format,rating,last_updated`. Case/separator differences normalize without AI. Minor spelling mistakes are sent to a separate AI header mapper; only a one-to-one mapping onto these nine names, within two normalized character edits, is accepted. Exact canonical headers cannot be remapped. Uncertain, duplicate, extra, instruction-like, or unrelated headers fail closed. Recognized mappings are displayed in the signed preview before confirmation. Use timestamps with explicit UTC/offsets and the selected theater's exact database name. See `sample-data/` for example uploads, not canned API responses.
+- CSV headers: `movie_title,theater_name,auditorium,start_time,end_time,language,format,rating,last_updated`. Case/separator differences normalize without AI. Minor spelling mistakes are sent to a separate AI header mapper; only a one-to-one mapping onto these nine names, within two normalized character edits, is accepted. Exact canonical headers cannot be remapped. Uncertain, duplicate, extra, instruction-like, or unrelated headers fail closed. Recognized mappings are displayed in the preview before confirmation. Use timestamps with explicit UTC/offsets and the selected theater's exact database name. See `sample-data/` for example uploads, not canned API responses.
 - Exact duplicate records are applied once. Exact normalized full-schedule matches skip AI. Other uploads use Gemini to propose known matches/new identities and explain naming corrections. Unknown/repeated/foreign references are rejected; uncertain matches block confirmation and suppress archival.
 - The preview shows original/proposed fields, explanations, editable values, and exclusions. Validate edits before confirmation. Movie IDs, theater IDs, and movie review status cannot be edited by CSV. Preview, validation, and cancellation do not write schedule data.
 - Auditoriums are real records with supported formats, and movies have their own allowed-format set. A screening's requested format must belong to **both** sets: a 3D-only movie cannot be assigned a 2D screening or a 2D-only room. IMAX does not implicitly mean 3D. AI may propose an existing compatible room, but it cannot change capability metadata. Preview, edit validation, confirmation, status activation, and a database trigger enforce compatibility. The preview lists available rooms/formats; unknown or incompatible assignments block confirmation.
@@ -55,7 +53,7 @@ Open `http://localhost:3000`, select a demo persona, and choose one theater or a
 
 Uploads are limited to 256 KiB and 100 input records. Full-schedule reconciliation supports at most 200 saved screenings, including archives, and a bounded model context; oversized imports fail without truncation. Large-catalog paginated search does not imply unlimited whole-schedule AI reconciliation.
 
-Previews are HMAC-signed, expire after 15 minutes, and are not stored in a plans table. They disappear on page reload. No approval history, sandbox sessions, scopes, or durable confirmation receipts exist. Replaying an applied preview fails its old revision check. After a lost confirmation response, close/refresh and inspect the persisted schedule; do not assume either success or failure or automatically retry the write.
+Previews are plain editable JSON, not signed tokens, and are not stored in a plans table. They disappear on page reload. Confirmation treats submitted changes like any admin mutation: validate scope, current database rows, protected identity/status fields, capabilities, final identities, and revision. It does not prove that a payload is the original AI response. No approval history, sandbox sessions, scopes, or durable confirmation receipts exist. Replaying an applied preview fails its old revision check. After a lost confirmation response, close/refresh and inspect the persisted schedule; do not assume either success or failure or automatically retry the write.
 
 **Demo persona selection is not authentication.** The server looks up the selected persona and applies database roles/memberships, but anyone can deliberately select another persona. This demonstrates access rules, not secure real-user identity. A trusted identity source is required before claiming production authorization. No login system is included.
 
@@ -66,7 +64,7 @@ src/server/
   database.ts         # Shared hosted connection
   schema/             # One file per table
   services/           # Users, theaters, schedules, reconciliation workflows
-  utils/              # Pure CSV/diff/signing helpers and bounded body reading
+  utils/              # CSV/diff/preview helpers and bounded body reading
   ai/                 # Gemini adapter
   errors.ts           # Small sanitized error responder
 src/app/api/          # Plain Next.js route handlers
@@ -87,8 +85,8 @@ bun run start
 
 Header matching receives only bounded header strings, never row contents. Both AI stages treat CSV text as untrusted data, have no tools or write authority, and return constrained structured output. Server-side allowlists, reference checks, capability rules, and explicit human review remain the trust boundary; prompting alone is not a guarantee against model manipulation.
 
-Service/helper tests run without a database; isolated doubles are confined to tests. They cover access, CSV validation, matching/archival, edits, signatures, stale/replayed confirmations, and transaction orchestration. They do **not** prove real SQL rollback, query performance at hundreds of thousands of rows, browser rendering, or provider availability. Verify those separately against an authorized hosted demo theater; do not use destructive production checks.
+Service/helper tests run without a database; isolated doubles are confined to tests. They cover access, CSV validation, matching/archival, edits, forged-payload rejection, stale/replayed confirmations, and transaction orchestration. They do **not** prove real SQL rollback, query performance at hundreds of thousands of rows, browser rendering, or provider availability. Verify those separately against an authorized hosted demo theater; do not use destructive production checks.
 
 `dev`, `build`, and `start` explicitly use `bun --bun next`, not a Node shebang. `vercel.json` uses the documented [`bunVersion: "1.x"`](https://vercel.com/docs/functions/runtimes/bun) server runtime setting as well as Bun install/build commands. Vercel manages that range separately from the locally pinned version; exact runtime parity and deployed behavior are not claimed. No deployment was performed.
 
-Implementation checks: Bun production build, typecheck, clean lint, 27 service/helper tests, a read-only hosted TLS connection check, and local production-server HTTP smoke checks (console 200, missing persona 401, cross-origin write 403, uninitialized schema safely returns 500). The configured host does not yet have these six `public` tables, and the local preview-signing secret is not configured. Operator initialization/seeding and signing-secret configuration are still required. No hosted data was changed and no live Gemini request was made.
+Implementation checks: Bun production build, typecheck, clean lint, 32 service/helper tests, a read-only hosted TLS connection check, and local production-server HTTP smoke checks (console 200, missing persona 401, cross-origin write 403, uninitialized schema safely returns 500). The configured host does not yet have these six `public` tables, so operator initialization/seeding is still required. No hosted data was changed and no live Gemini request was made.

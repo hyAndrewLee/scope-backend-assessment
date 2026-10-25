@@ -139,7 +139,6 @@ export const previewSchema = z
     personaId: idSchema,
     theaterId: idSchema,
     revision: z.number().int().min(0),
-    expiresAt: z.number().int(),
     entries: z.array(entrySchema).max(300),
     blockers: z.array(z.string().max(512)).max(100),
     model: z.string().max(128),
@@ -163,13 +162,6 @@ export const previewSchema = z
   })
   .strict();
 export type Preview = z.infer<typeof previewSchema>;
-export const signedPreviewSchema = z
-  .object({
-    payload: z.string().max(1_400_000),
-    signature: z.string().regex(/^[a-f0-9]{64}$/),
-  })
-  .strict();
-export type SignedPreview = z.infer<typeof signedPreviewSchema>;
 export const editSchema = z
   .object({
     index: z.number().int().min(0).max(299),
@@ -182,12 +174,12 @@ export const editSchema = z
   .strict();
 export const reviewSchema = z
   .object({
-    preview: signedPreviewSchema,
+    preview: previewSchema,
     edits: z.array(editSchema).min(1).max(300),
   })
   .strict();
 export const confirmSchema = z
-  .object({ preview: signedPreviewSchema, acknowledge: z.literal(true) })
+  .object({ preview: previewSchema, acknowledge: z.literal(true) })
   .strict();
 export const schedulePageSchema = z.object({
   showtimes: z.array(

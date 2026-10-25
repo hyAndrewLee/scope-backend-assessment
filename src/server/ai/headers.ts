@@ -39,7 +39,7 @@ export async function mapHeaders(headers: string[], signal: AbortSignal) {
         }),
       }),
       abortSignal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
-      maxRetries: 0,
+      maxRetries: 2,
       maxOutputTokens: 512,
     });
 

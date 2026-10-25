@@ -1,41 +1,26 @@
-import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
-export const env = createEnv({
-  /**
-   * Specify your server-side environment variables schema here. This way you can ensure the app
-   * isn't built with invalid env vars.
-   */
-  server: {
-    DATABASE_URL: z.string().url(),
-    NODE_ENV: z
-      .enum(["development", "test", "production"])
-      .default("development"),
-  },
+export const settingsSchema = z.object({
+  DATABASE_URL: z.string().url().refine((value) => {
+    const url = new URL(value);
+    return ["postgres:", "postgresql:"].includes(url.protocol) &&
+      !!url.username && !!url.password && url.pathname.length > 1 &&
+      !["localhost", "127.0.0.1", "[::1]", "0.0.0.0"].includes(url.hostname) &&
+      (!url.searchParams.has("sslmode") || url.searchParams.get("sslmode") === "verify-full");
+  }, "Use a hosted Postgres URL with verified TLS."),
+  DATABASE_SSL_CA: z.string().optional(),
+  APP_ORIGIN: z.string().url().transform((value) => new URL(value).origin),
+  PREVIEW_SIGNING_SECRET: z.string().min(32),
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+});
 
-  /**
-   * Specify your client-side environment variables schema here. This way you can ensure the app
-   * isn't built with invalid env vars. To expose them to the client, prefix them with
-   * `NEXT_PUBLIC_`.
-   */
-  client: {},
-
-  /**
-   * You can't destruct `process.env` as a regular object in the Next.js edge runtimes (e.g.
-   * middlewares) or client-side so we need to destruct manually.
-   */
-  runtimeEnv: {
-    DATABASE_URL: process.env.DATABASE_URL,
-    NODE_ENV: process.env.NODE_ENV,
-  },
-  /**
-   * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
-   * useful for Docker builds.
-   */
-  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
-  /**
-   * Makes it so that empty strings are treated as undefined. `SOME_VAR: z.string()` and
-   * `SOME_VAR=''` will throw an error.
-   */
-  emptyStringAsUndefined: true,
+// Lazy validation allows static builds without connecting or exposing secrets.
+export const getSettings = () => settingsSchema.parse({
+  DATABASE_URL: process.env.DATABASE_URL,
+  DATABASE_SSL_CA: process.env.DATABASE_SSL_CA || undefined,
+  APP_ORIGIN: process.env.APP_ORIGIN,
+  PREVIEW_SIGNING_SECRET: process.env.PREVIEW_SIGNING_SECRET,
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY || undefined,
+  GEMINI_MODEL: process.env.GEMINI_MODEL || undefined,
 });

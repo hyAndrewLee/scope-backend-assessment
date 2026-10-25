@@ -96,6 +96,39 @@ export function PreviewModal({
                   ))}
                 </ul>
               )}
+              {!!preview?.headerMappings?.length && (
+                <div className="mb-4 text-sm text-amber-200">
+                  <h3 className="font-semibold">
+                    Recognized column names · review these mappings
+                  </h3>
+                  <ul>
+                    {preview.headerMappings.map((m) => (
+                      <li key={m.from}>
+                        {m.from} becomes {m.to}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!!preview?.capabilities?.auditoriums.length && (
+                <details className="mb-4 text-sm text-gray-400">
+                  <summary>Available auditoriums and formats</summary>
+                  <ul>
+                    {preview.capabilities.auditoriums.map((room) => (
+                      <li key={room.id}>
+                        {room.name}: {room.supportedFormats.join(", ")}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              <datalist id="auditorium-options">
+                {preview?.capabilities?.auditoriums.map((room) => (
+                  <option key={room.id} value={room.name}>
+                    {room.supportedFormats.join(", ")}
+                  </option>
+                ))}
+              </datalist>
               <p className="mb-4 text-sm text-gray-400">
                 Edit proposed values or exclude a proposal, then validate edits
                 before confirming. Movie identity and review status are
@@ -136,6 +169,15 @@ export function PreviewModal({
                       </label>
                     </div>
                     <p className="mb-3 text-sm text-gray-400">{entry.reason}</p>
+                    {entry.after && (
+                      <p className="mb-3 text-xs text-gray-500">
+                        Movie formats:{" "}
+                        {preview.capabilities?.movies
+                          .find((m) => m.id === entry.after?.movieId)
+                          ?.supportedFormats.join(", ") ??
+                          "New movie: formats from included proposals"}
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div className="font-semibold text-gray-400">
                         Original CSV / saved screening
@@ -165,6 +207,11 @@ export function PreviewModal({
                                 <input
                                   aria-label={`${field} proposal ${index + 1}`}
                                   value={value}
+                                  list={
+                                    field === "auditorium"
+                                      ? "auditorium-options"
+                                      : undefined
+                                  }
                                   maxLength={256}
                                   disabled={busy || outcomeUnknown}
                                   onChange={(e) =>

@@ -93,7 +93,7 @@ export default function Home() {
                 ...headers,
                 "Content-Type": "text/csv; charset=utf-8",
               },
-              timeout: 60000,
+              timeout: 90000,
             },
           )
         ).data,

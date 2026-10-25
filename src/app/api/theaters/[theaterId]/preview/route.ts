@@ -4,6 +4,7 @@ import { requireUser, assertAccess } from "~/server/services/users";
 import { assertWrite, readBody } from "~/server/utils/read-body";
 import { idSchema } from "~/features/reconciliation/schemas";
 import { errorResponse } from "~/server/errors";
+export const maxDuration = 90;
 export async function POST(request: Request, context: { params: Promise<{ theaterId: string }> }) {
   try {
     assertWrite(request, "text/csv");

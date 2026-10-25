@@ -123,6 +123,21 @@ test("preview offers a movie status dropdown and advisory AI suggestion", () => 
   );
 });
 
+test("needs-review rows expose editable source values and an explicit match choice", () => {
+  const original = { movieTitle: "Uncertain film", theaterName: "Theater", auditorium: "Room 1", startTime: row.startTime, endTime: row.endTime, language: row.language, format: row.format, rating: row.rating, partnerLastUpdated: row.partnerLastUpdated };
+  const html = render({ ...preview, existingShowtimes: [row], blockers: ["Resolve this match"], entries: [{ ...entry, kind: "ambiguous", before: null, after: null, original }] });
+  expect(html).toContain('aria-label="Resolve this showtime"');
+  expect(html).toContain('value="match:s"');
+  expect(html).toContain("Add a new showtime");
+  for (const label of ["Auditorium for showtime 1", "Language for showtime 1", "Age rating for showtime 1"]) {
+    const control = html.match(new RegExp(`<select[^>]*aria-label="${label}"[^>]*>`))?.[0];
+    expect(control).toBeDefined();
+    expect(control).not.toContain(' disabled=""');
+  }
+  expect(html).toContain('value="Uncertain film"');
+  expect(html).not.toContain("Needs a match</span>");
+});
+
 test("failed previews stay distinct from no-change reviews", () => {
   const html = render(null, "Provider unavailable");
   expect(html).toContain("No schedule changes were made");

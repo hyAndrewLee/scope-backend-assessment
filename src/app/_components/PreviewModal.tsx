@@ -105,17 +105,19 @@ export function PreviewModal({
   if (!open) return null;
 
   const entries = preview?.entries ?? [];
-  const included = entries.filter(
-    (entry, index) => !(edits[index]?.excluded ?? entry.excluded),
-  );
   const counts = { add: 0, update: 0, archive: 0 };
-  for (const entry of included)
-    if (
-      entry.kind === "add" ||
-      entry.kind === "update" ||
-      entry.kind === "archive"
-    )
-      counts[entry.kind]++;
+  for (const [index, entry] of entries.entries()) {
+    if (edits[index]?.excluded ?? entry.excluded) continue;
+    const resolution = edits[index]?.resolution;
+    const kind =
+      entry.kind === "ambiguous" && resolution
+        ? resolution.kind === "new"
+          ? "add"
+          : "update"
+        : entry.kind;
+    if (kind === "add" || kind === "update" || kind === "archive")
+      counts[kind]++;
+  }
   const changes = counts.add + counts.update + counts.archive;
   const changedEntries = entries
     .map((entry, index) => ({ entry, index }))
@@ -128,17 +130,49 @@ export function PreviewModal({
   const entry = active?.entry;
   const index = active?.index ?? 0;
   const editable =
-    !!entry?.after && ["add", "update", "unchanged"].includes(entry.kind);
+    !!entry &&
+    ((!!entry.after && ["add", "update", "unchanged"].includes(entry.kind)) ||
+      (entry.kind === "ambiguous" && !!entry.original));
+  const resolution = edits[index]?.resolution;
+  const selectedMatch =
+    resolution?.kind === "match"
+      ? preview?.existingShowtimes?.find(
+          (row) => row.id === resolution.showtimeId,
+        )
+      : undefined;
+  const formatEntry =
+    entry && selectedMatch
+      ? {
+          ...entry,
+          after: {
+            ...(entry.after ?? selectedMatch),
+            movieId: selectedMatch.movieId,
+          },
+        }
+      : entry;
   const excluded = entry ? (edits[index]?.excluded ?? entry.excluded) : false;
   const hasEdits = Object.keys(edits).length > 0;
   const selectedRoom =
-    edits[index]?.fields?.auditorium ?? entry?.after?.auditorium ?? "";
+    edits[index]?.fields?.auditorium ??
+    entry?.after?.auditorium ??
+    entry?.original?.auditorium ??
+    "";
   const formats =
-    preview && entry
-      ? availablePreviewFormats(preview, entry, selectedRoom)
+    preview && formatEntry
+      ? availablePreviewFormats(preview, formatEntry, selectedRoom)
       : [];
   const valueFor = (field: Field) =>
-    edits[index]?.fields?.[field] ?? entry?.after?.[field] ?? "";
+    edits[index]?.fields?.[field] ??
+    (field === "movieStatus" && entry?.kind === "ambiguous" && selectedMatch
+      ? selectedMatch.movieStatus
+      : undefined) ??
+    entry?.after?.[field] ??
+    (field === "movieStatus"
+      ? "draft"
+      : entry
+        ? fileValue(entry, field)
+        : undefined) ??
+    "";
   const baselineFor = (field: Field) =>
     entry?.before?.[field] ?? (entry ? fileValue(entry, field) : undefined);
   const visibleFields = fields.filter(
@@ -173,8 +207,13 @@ export function PreviewModal({
     }
     const nextFields = { ...edits[index]?.fields, [field]: value };
     if (field === "auditorium") {
-      const allowed = availablePreviewFormats(preview, entry, value);
-      const current = nextFields.format ?? entry.after?.format;
+      const allowed = availablePreviewFormats(
+        preview,
+        formatEntry ?? entry,
+        value,
+      );
+      const current =
+        nextFields.format ?? entry.after?.format ?? entry.original?.format;
       if (allowed.length && !allowed.includes(current!))
         nextFields.format = allowed[0];
     }
@@ -382,6 +421,52 @@ export function PreviewModal({
                     <p className="mt-2 text-sm leading-relaxed text-gray-400">
                       {entry.reason}
                     </p>
+                    {entry.kind === "ambiguous" && (
+                      <label className="mt-3 block text-xs text-amber-200">
+                        Resolve this showtime
+                        <select
+                          aria-label="Resolve this showtime"
+                          value={
+                            resolution?.kind === "new"
+                              ? "new"
+                              : resolution?.kind === "match"
+                                ? `match:${resolution.showtimeId}`
+                                : ""
+                          }
+                          disabled={busy || outcomeUnknown}
+                          onChange={(event) => {
+                            const resolution: Edits[number]["resolution"] =
+                              event.target.value === "new"
+                                ? { kind: "new" }
+                                : {
+                                    kind: "match",
+                                    showtimeId: event.target.value.slice(6),
+                                  };
+                            setEdits({
+                              ...edits,
+                              [index]: { ...edits[index], index, resolution },
+                            });
+                          }}
+                          className="mt-1 w-full rounded border border-amber-500/30 bg-gray-900 px-2 py-2 text-sm text-white"
+                        >
+                          <option value="" disabled>
+                            Choose an existing screening or add a new one
+                          </option>
+                          <option value="new">Add a new showtime</option>
+                          {preview?.existingShowtimes?.map((row) => (
+                            <option key={row.id} value={`match:${row.id}`}>
+                              Update {row.movieTitle} ·{" "}
+                              {formatValue(row.startTime, "startTime")} ·{" "}
+                              {row.auditorium}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="mt-1 block text-gray-500">
+                          Edit the values below. The server will validate your
+                          choice before saving.
+                        </span>
+                      </label>
+                    )}
                     {editable && (
                       <div className="mt-3 text-xs text-gray-400">
                         <p>

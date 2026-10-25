@@ -6,7 +6,11 @@ import { movies } from "../schema/movies";
 import { showtimes } from "../schema/showtimes";
 import { getSettings } from "../../env.js";
 import { AppError } from "../errors";
-import { parseCsv, uniqueRows } from "../utils/csv";
+import { csvHeaders, parseCsv, uniqueRows } from "../utils/csv";
+import { exactHeaders } from "../utils/headers";
+import { mapHeaders } from "../ai/headers";
+import { readCapabilities } from "./auditoriums";
+import { validateAssignments } from "../utils/auditoriums";
 import {
   compilePreview,
   exactProposal,
@@ -38,7 +42,11 @@ async function snapshotFor(db: Database, personaId: string, theaterId: string) {
         .from(theaters)
         .where(eq(theaters.id, theaterId));
       if (!theater) throw new AppError(404, "Theater not found.");
-      return { theater, rows: await readSnapshot(tx, theaterId) };
+      return {
+        theater,
+        rows: await readSnapshot(tx, theaterId),
+        capabilities: await readCapabilities(tx, theaterId),
+      };
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },
   );
@@ -50,8 +58,10 @@ export async function createPreview(
   bytes: Uint8Array,
   signal: AbortSignal,
 ) {
-  const rows = uniqueRows(parseCsv(bytes));
   const snapshot = await snapshotFor(db, personaId, theaterId);
+  const headers = csvHeaders(bytes);
+  const mapping = exactHeaders(headers) ?? (await mapHeaders(headers, signal));
+  const rows = uniqueRows(parseCsv(bytes, mapping));
   if (rows.some((row) => row.theaterName !== snapshot.theater.name))
     throw new AppError(
       400,
@@ -60,14 +70,27 @@ export async function createPreview(
   const exact = exactProposal(rows, snapshot.rows);
   const generated = exact
     ? { proposal: exact, model: "not-required" }
-    : await generateProposal(rows, snapshot.rows, signal);
-  const preview = compilePreview(rows, snapshot.rows, generated.proposal, {
+    : await generateProposal(
+        rows,
+        snapshot.rows,
+        signal,
+        snapshot.capabilities,
+      );
+  const compiled = compilePreview(rows, snapshot.rows, generated.proposal, {
     personaId,
     theaterId,
     revision: snapshot.theater.revision,
     expiresAt: Date.now() + 15 * 60000,
     model: generated.model,
+    headerMappings: headers.flatMap((from, i) =>
+      from === mapping[i] ? [] : [{ from, to: mapping[i]! }],
+    ),
   });
+  const preview = validateAssignments(
+    compiled,
+    snapshot.capabilities.auditoriums,
+    snapshot.capabilities.movies,
+  );
   return signPreview(preview, getSettings().PREVIEW_SIGNING_SECRET);
 }
 export async function reviewPreview(
@@ -81,7 +104,11 @@ export async function reviewPreview(
   const snapshot = await snapshotFor(db, personaId, theaterId);
   assertRevision(snapshot.theater.revision, preview.revision);
   return signPreview(
-    revisePreview(preview, snapshot.rows, input.edits),
+    validateAssignments(
+      revisePreview(preview, snapshot.rows, input.edits),
+      snapshot.capabilities.auditoriums,
+      snapshot.capabilities.movies,
+    ),
     secret,
   );
 }
@@ -131,8 +158,14 @@ export async function confirmPreview(
   return db.transaction(async (tx) => {
     const theater = await lockTheater(tx, personaId, theaterId);
     assertRevision(theater.revision, preview.revision);
-    const changes = validateConfirmation(
+    const capabilities = await readCapabilities(tx, theaterId);
+    const checked = validateAssignments(
       preview,
+      capabilities.auditoriums,
+      capabilities.movies,
+    );
+    const changes = validateConfirmation(
+      checked,
       await readSnapshot(tx, theaterId),
     );
     if (!changes.length) throw new AppError(409, "No changes to confirm.");
@@ -158,6 +191,16 @@ export async function confirmPreview(
             theaterId,
             title: after.movieTitle,
             movieStatus: after.movieStatus,
+            supportedFormats: [
+              ...new Set(
+                changes
+                  .filter(
+                    (e) =>
+                      e.kind === "add" && e.after?.movieId === after.movieId,
+                  )
+                  .map((e) => e.after!.format),
+              ),
+            ],
           })
           .onConflictDoNothing();
         const [movie] = await tx
@@ -171,10 +214,21 @@ export async function confirmPreview(
         )
           throw new AppError(409, "Movie identity conflict.");
       }
-      const { movieTitle: _title, movieStatus: _status, ...values } = after;
+      const {
+        movieTitle: _title,
+        movieStatus: _status,
+        auditorium,
+        ...record
+      } = after;
       void _title;
       void _status;
-      values.lastUpdated = new Date().toISOString();
+      const room = capabilities.auditoriums.find((r) => r.name === auditorium);
+      if (!room) throw new AppError(409, "Auditorium no longer exists.");
+      const values = {
+        ...record,
+        auditoriumId: room.id,
+        lastUpdated: new Date().toISOString(),
+      };
       if (entry.kind === "add") await tx.insert(showtimes).values(values);
       else
         await tx

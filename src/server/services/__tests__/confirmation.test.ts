@@ -87,7 +87,18 @@ function databaseDouble(failSecondWrite = false) {
               ]
             : table === "user_theaters"
               ? []
-              : [structuredClone(state.row)];
+              : table === "auditoriums"
+                ? [
+                    {
+                      id: "room",
+                      theaterId: "t",
+                      name: "A",
+                      supportedFormats: ["2D"],
+                    },
+                  ]
+                : table === "movies"
+                  ? [{ id: "m", title: "Movie", supportedFormats: ["2D"] }]
+                  : [structuredClone(state.row)];
       const query = {
         from(value: Parameters<typeof getTableName>[0]) {
           table = getTableName(value);

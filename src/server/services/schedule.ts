@@ -4,6 +4,8 @@ import type { Database } from "../database";
 import { movies } from "../schema/movies";
 import { theaters } from "../schema/theaters";
 import { showtimes } from "../schema/showtimes";
+import { auditoriums } from "../schema/auditoriums";
+import { supportsProjection } from "../utils/auditoriums";
 import { requireUser, assertAccess } from "./users";
 import { AppError } from "../errors";
 import {
@@ -22,7 +24,7 @@ const columns = {
   movieTitle: movies.title,
   movieStatus: movies.movieStatus,
   partnerTitle: showtimes.partnerTitle,
-  auditorium: showtimes.auditorium,
+  auditorium: auditoriums.name,
   startTime: iso(showtimes.startTime),
   endTime: iso(showtimes.endTime),
   language: showtimes.language,
@@ -65,6 +67,7 @@ export async function readSnapshot(db: Database, theaterId: string) {
     .select(columns)
     .from(showtimes)
     .innerJoin(movies, eq(movies.id, showtimes.movieId))
+    .innerJoin(auditoriums, eq(auditoriums.id, showtimes.auditoriumId))
     .where(eq(showtimes.theaterId, theaterId))
     .orderBy(showtimes.id)
     .limit(201);
@@ -92,9 +95,10 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
       ? ilike(movies.title, `%${q.search.replace(/[\\%_]/g, "\\$&")}%`)
       : undefined,
     q.status !== "all" ? eq(showtimes.status, q.status) : undefined,
-    ...(["format", "language", "rating", "auditorium"] as const).map((key) =>
+    ...(["format", "language", "rating"] as const).map((key) =>
       q[key] ? eq(showtimes[key], q[key]) : undefined,
     ),
+    q.auditorium ? eq(auditoriums.name, q.auditorium) : undefined,
     q.movieStatus ? eq(movies.movieStatus, q.movieStatus) : undefined,
     q.startDate
       ? gte(showtimes.startTime, `${q.startDate}T00:00:00Z`)
@@ -125,11 +129,13 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
         })
         .from(showtimes)
         .innerJoin(movies, eq(movies.id, showtimes.movieId))
+        .innerJoin(auditoriums, eq(auditoriums.id, showtimes.auditoriumId))
         .where(where);
       const rows = await tx
         .select(columns)
         .from(showtimes)
         .innerJoin(movies, eq(movies.id, showtimes.movieId))
+        .innerJoin(auditoriums, eq(auditoriums.id, showtimes.auditoriumId))
         .innerJoin(theaters, eq(theaters.id, showtimes.theaterId))
         .where(where)
         .orderBy(
@@ -149,7 +155,7 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
         formats: showtimes.format,
         languages: showtimes.language,
         ratings: showtimes.rating,
-        auditoriums: showtimes.auditorium,
+        auditoriums: auditoriums.name,
         movieStatuses: movies.movieStatus,
       })) {
         if (key === "movieStatuses" && user.role !== "admin") continue;
@@ -157,6 +163,7 @@ export async function readSchedule(db: Database, user: User, q: Filters) {
           .selectDistinct({ value: column })
           .from(showtimes)
           .innerJoin(movies, eq(movies.id, showtimes.movieId))
+          .innerJoin(auditoriums, eq(auditoriums.id, showtimes.auditoriumId))
           .where(scope)
           .orderBy(column)
           .limit(100);
@@ -215,6 +222,30 @@ export async function changeStatus(
       .where(eq(table.id, id));
     if (!found) throw new AppError(404, "Record not found.");
     await lockTheater(tx, userId, found.theaterId);
+    if (kind === "showtime" && status === "active") {
+      const [projection] = await tx
+        .select({
+          format: showtimes.format,
+          movieFormats: movies.supportedFormats,
+          roomFormats: auditoriums.supportedFormats,
+        })
+        .from(showtimes)
+        .innerJoin(movies, eq(movies.id, showtimes.movieId))
+        .innerJoin(auditoriums, eq(auditoriums.id, showtimes.auditoriumId))
+        .where(eq(showtimes.id, id));
+      if (
+        !projection ||
+        !supportsProjection(
+          projection.format,
+          projection.movieFormats,
+          projection.roomFormats,
+        )
+      )
+        throw new AppError(
+          409,
+          "Movie and auditorium do not both support this screening format.",
+        );
+    }
     if (kind === "movie")
       await tx
         .update(movies)

@@ -127,6 +127,13 @@ export const entrySchema = z
   })
   .strict();
 export type Entry = z.infer<typeof entrySchema>;
+export const auditoriumSchema = z.object({
+  id: idSchema,
+  theaterId: idSchema,
+  name: text.max(128),
+  supportedFormats: z.array(z.enum(["2D", "3D", "IMAX"])).min(1),
+});
+export type Auditorium = z.infer<typeof auditoriumSchema>;
 export const previewSchema = z
   .object({
     personaId: idSchema,
@@ -136,6 +143,23 @@ export const previewSchema = z
     entries: z.array(entrySchema).max(300),
     blockers: z.array(z.string().max(512)).max(100),
     model: z.string().max(128),
+    headerMappings: z
+      .array(z.object({ from: z.string().max(64), to: z.string().max(64) }))
+      .max(9)
+      .optional(),
+    capabilities: z
+      .object({
+        auditoriums: z.array(auditoriumSchema).max(100),
+        movies: z
+          .array(
+            z.object({
+              id: idSchema,
+              supportedFormats: z.array(z.enum(["2D", "3D", "IMAX"])).min(1),
+            }),
+          )
+          .max(200),
+      })
+      .optional(),
   })
   .strict();
 export type Preview = z.infer<typeof previewSchema>;

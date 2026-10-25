@@ -57,6 +57,11 @@ Schema setup and seeding are explicit, not startup behavior; seeding refuses pop
 - **Hooks separate concerns:** Theater hooks handle selection, queries, and mutations; preview hooks handle submission, navigation, matching, and field edits. TanStack Query owns server-state caching; mutations invalidate shared schedules.
 - **UI follows the screen:** The page composes header, toolbar, feedback, schedule, and modal. Preview sections render navigation, details, comparisons, and confirmation; reusable input/table components retain explicit props. Server services and shared Zod contracts remain the validation boundary.
 
+## Server abstractions
+
+- **Thin routes, domain services:** Next.js handlers delegate schedule and reconciliation workflows to services that use Drizzle directly, without controller/repository layers.
+- **Isolated AI adapter:** Gemini integration stays server-side and returns proposals, with no database write authority. CSV parsing and reconciliation helpers remain independently testable without a live provider or database.
+
 ## Code style
 
 Named `#region` / `#endregion` comments for large sections. ESLint enforces statement spacing; Prettier enforces formatting. Region boundaries remain a manual readability decision.

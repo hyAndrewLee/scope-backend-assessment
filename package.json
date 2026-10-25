@@ -9,6 +9,7 @@
     "build": "bun --bun next build",
     "start": "bun --bun next start",
     "test": "bun test",
+    "eval:csv": "bun scripts/eval-csv.ts",
     "test:watch": "bun test --watch",
     "lint": "bun --bun eslint .",
     "typecheck": "bun --bun tsc --noEmit",

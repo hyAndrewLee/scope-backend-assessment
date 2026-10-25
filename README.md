@@ -37,6 +37,10 @@ The seed imports starter users, memberships, theaters, auditoriums, movies, and 
 
 Open `http://localhost:3000`, select a demo persona, and choose one theater or all accessible theaters.
 
+## CSV edge-case evaluations
+
+Run `bun run eval:csv` for the local golden dataset: 37 scenarios with all nine columns checked. Uploadable files, expected outcomes, and safety notes are in [`sample-data/edge-cases/README.md`](sample-data/edge-cases/README.md). The suite is also included in `bun test`; it requires no Supabase or Gemini access.
+
 ## Behavior
 
 - Server-side search, filters, sort, pagination, totals, active counts, and dropdown options. Dates use inclusive UTC days. Title substring search has a trigram index; no separate search service.

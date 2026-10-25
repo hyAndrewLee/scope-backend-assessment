@@ -4,6 +4,8 @@ import {
   type CsvRow,
 } from "../../features/reconciliation/schemas";
 import { AppError } from "../errors";
+import { displayLabel } from "../../features/reconciliation/display";
+import { nameKey } from "./reconciliation";
 
 import { exactHeaders, validateHeaderMapping } from "./headers";
 
@@ -64,14 +66,56 @@ export function parseCsv(bytes: Uint8Array, mapping?: string[]): CsvRow[] {
       rating: data.rating,
       partnerLastUpdated: data.last_updated,
     });
-    if (!result.success)
+    if (!result.success) {
+      const issue = result.error.issues[0]!;
+      // The only row-level refinement checks end time against start time.
+      const field = String(issue.path[0] ?? "endTime");
+      const allowed =
+        field === "language"
+          ? csvRowSchema.shape.language.options
+          : field === "format"
+            ? csvRowSchema.shape.format.options
+            : field === "rating"
+              ? csvRowSchema.shape.rating.options
+              : undefined;
+      const message = allowed
+        ? `Choose one of: ${allowed.map((value) => (displayLabel(value) === value ? value : `${displayLabel(value)} (${value})`)).join(", ")}.`
+        : issue.code === "too_small"
+          ? "This field is required."
+          : issue.code === "too_big"
+            ? `Use no more than ${issue.maximum} characters.`
+            : field === "startTime" ||
+                field === "endTime" ||
+                field === "partnerLastUpdated"
+              ? issue.code === "custom"
+                ? "The end time must be later than the start time."
+                : "Use a valid date and time with a timezone, such as 2025-03-15T18:00:00Z."
+              : "Check this value and try again.";
       throw new AppError(
         400,
-        `CSV row ${index + 2}: ${result.error.issues[0]?.message ?? "Invalid record"}`,
+        `CSV row ${index + 2} · ${displayLabel(field)}: ${message}`,
       );
+    }
     return result.data;
   });
 }
 export function uniqueRows(rows: CsvRow[]) {
-  return [...new Map(rows.map((row) => [JSON.stringify(row), row])).values()];
+  const unique = [
+    ...new Map(rows.map((row) => [JSON.stringify(row), row])).values(),
+  ];
+  const screenings = new Set<string>();
+  for (const row of unique) {
+    const key = JSON.stringify([
+      row.theaterName,
+      nameKey(row.movieTitle),
+      row.startTime,
+    ]);
+    if (screenings.has(key))
+      throw new AppError(
+        409,
+        `“${row.movieTitle}” is listed more than once at ${row.startTime} with different details. Keep one row for this movie and start time, then upload again.`,
+      );
+    screenings.add(key);
+  }
+  return unique;
 }

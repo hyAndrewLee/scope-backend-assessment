@@ -34,6 +34,13 @@ bun run dev
 
 Schema setup and seeding are explicit, not startup behavior; seeding refuses populated tables. Open `http://localhost:3000`, select an admin demo persona and one theater, then upload a matching CSV from `sample-data/`.
 
+## Using the preview
+
+1. Select an admin persona and one theater, then upload its complete schedule CSV. Wait for processing; no changes are saved yet.
+2. Select a showtime in **Changes**, or switch to **All**. Compare current, uploaded, and proposed values; read the explanation. Use **Show all details** for hidden fields.
+3. Edit proposed values or select **Leave out** to skip an action. For **Needs review**, choose an existing screening or **Add a new showtime**. Movie-status edits affect every screening of that movie; **Use AI suggestion** is optional.
+4. Review archive proposals carefully: omitted screenings will be archived, not deleted. Click **Confirm** to validate edits and save included changes. Fix any reported issues and confirm again. **Cancel** closes without saving; **Discard edits** resets unsaved edits.
+
 ## Key decisions
 
 - **Full-schedule imports:** CSV replaces one theater’s schedule conceptually. Missing screenings become archive proposals, never deletions. Identical duplicates collapse; conflicting duplicates fail validation.

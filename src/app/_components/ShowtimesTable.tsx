@@ -16,6 +16,7 @@ export type SortField =
   | "lastUpdated"
   | "theaterName"
   | "movieStatus";
+
 type SortOrder = "asc" | "desc";
 
 interface ShowtimesTableProps {
@@ -49,6 +50,7 @@ export function ShowtimesTable({
   onSearchChange,
   onSortChange,
 }: ShowtimesTableProps) {
+  // #region Sorting and cell display
   const handleSort = (field: SortField) => {
     if (field === "movieStatus" && !isAdmin) return;
     onSortChange(
@@ -69,10 +71,12 @@ export function ShowtimesTable({
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field)
       return <span className="ml-1 text-gray-500">↕</span>;
+
     return <span className="ml-1">{sortOrder === "asc" ? "↑" : "↓"}</span>;
   };
 
-  const columnCount = (isAdmin ? 10 : 7) + (showTheaterColumn ? 1 : 0);
+  const columnCount = (isAdmin ? 10 : 6) + (showTheaterColumn ? 1 : 0);
+  // #endregion
 
   return (
     <div className="w-full">
@@ -88,6 +92,7 @@ export function ShowtimesTable({
 
       <div className="overflow-x-auto rounded-lg border border-gray-700">
         <table className="w-full text-left text-sm">
+          {/* #region Sortable column headers */}
           <thead className="bg-gray-800 text-xs text-gray-400 uppercase">
             <tr>
               {showTheaterColumn && (
@@ -131,14 +136,19 @@ export function ShowtimesTable({
               <th className="px-4 py-3">Format</th>
               <th className="px-4 py-3">Rating</th>
               {isAdmin && <th className="px-4 py-3">Status</th>}
-              <th
-                className="cursor-pointer px-4 py-3 hover:bg-gray-700"
-                onClick={() => handleSort("lastUpdated")}
-              >
-                Last Updated <SortIcon field="lastUpdated" />
-              </th>
+              {isAdmin && (
+                <th
+                  className="cursor-pointer px-4 py-3 hover:bg-gray-700"
+                  onClick={() => handleSort("lastUpdated")}
+                >
+                  Last Updated <SortIcon field="lastUpdated" />
+                </th>
+              )}
             </tr>
           </thead>
+          {/* #endregion */}
+
+          {/* #region Showtime rows and administrative controls */}
           <tbody>
             {showtimes.length === 0 ? (
               <tr>
@@ -225,13 +235,16 @@ export function ShowtimesTable({
                       </select>
                     </td>
                   )}
-                  <td className="px-4 py-3 text-gray-300">
-                    {formatDateTime(showtime.lastUpdated)}
-                  </td>
+                  {isAdmin && (
+                    <td className="px-4 py-3 text-gray-300">
+                      {formatDateTime(showtime.lastUpdated)}
+                    </td>
+                  )}
                 </tr>
               ))
             )}
           </tbody>
+          {/* #endregion */}
         </table>
       </div>
     </div>

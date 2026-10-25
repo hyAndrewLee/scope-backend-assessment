@@ -24,6 +24,7 @@ function table(isAdmin: boolean, empty = false) {
     }),
   );
 }
+
 function filters(isAdmin: boolean) {
   return renderToStaticMarkup(
     createElement(FilterBar, {
@@ -48,6 +49,7 @@ function filters(isAdmin: boolean) {
 
 test("viewers see neither protected columns nor status styling", () => {
   const html = table(false);
+
   for (const hidden of [
     "Movie Status",
     "Auditorium",
@@ -55,15 +57,17 @@ test("viewers see neither protected columns nor status styling", () => {
     "Archived",
     "Flagged",
     "opacity-50",
+    "Last Updated",
   ])
     expect(html).not.toContain(hidden);
   expect(html).toContain("Wonka");
   expect(html).toContain("English");
-  expect(table(false, true)).toContain('colSpan="7"');
+  expect(table(false, true)).toContain('colSpan="6"');
 });
 
 test("viewers have no movie status, showtime status, or auditorium filters", () => {
   const html = filters(false);
+
   for (const hidden of [
     "Movie Status",
     "Auditorium",
@@ -84,5 +88,7 @@ test("administrators retain all three columns and filters", () => {
     expect(html).toContain("Flagged");
     expect(html).toContain("Archived");
   }
+
+  expect(table(true)).toContain("Last Updated");
   expect(table(true, true)).toContain('colSpan="10"');
 });

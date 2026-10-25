@@ -52,7 +52,12 @@ export function availablePreviewFormats(
   );
   // New movies have only the imported format verified, not every format a room offers.
   const movieFormats =
-    movie?.supportedFormats ?? (entry.after ? [entry.after.format] : []);
+    movie?.supportedFormats ??
+    (entry.kind === "ambiguous"
+      ? (room?.supportedFormats ?? [])
+      : entry.after
+        ? [entry.after.format]
+        : []);
   return (
     room?.supportedFormats.filter((format) => movieFormats.includes(format)) ??
     []

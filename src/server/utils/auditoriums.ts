@@ -23,7 +23,13 @@ export function validateAssignments(
   const entries = structuredClone(preview.entries);
   const blockers: string[] = [];
   for (const entry of entries) {
-    if (entry.excluded || !entry.after || entry.kind === "archive") continue;
+    if (
+      entry.excluded ||
+      !entry.after ||
+      entry.kind === "archive" ||
+      entry.kind === "ambiguous"
+    )
+      continue;
     const after = entry.after;
     const matches = rooms.filter(
       (room) =>

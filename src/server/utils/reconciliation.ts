@@ -69,10 +69,12 @@ export function finalBlockers(snapshot: Showtime[], entries: Entry[]) {
   const final = new Map(snapshot.map((s) => [s.id, s]));
   for (const entry of entries) {
     if (entry.excluded) continue;
-    if (entry.kind === "ambiguous")
+    if (entry.kind === "ambiguous") {
       blockers.push(
-        `CSV row ${(entry.sourceRow ?? 0) + 2}: resolve or exclude the uncertain match.`,
+        `CSV row ${(entry.sourceRow ?? 0) + 2}: choose an existing screening or add a new one, then confirm your edits.`,
       );
+      continue; // An unresolved draft is not a proposed database write.
+    }
     if (entry.after) final.set(entry.after.id, entry.after);
   }
   const active = new Set<string>();
@@ -88,6 +90,25 @@ export function finalBlockers(snapshot: Showtime[], entries: Entry[]) {
   if (final.size > 200)
     blockers.push("Result exceeds the 200-screening reconciliation limit.");
   return [...new Set(blockers)];
+}
+function sourceDraft(
+  row: CsvRow,
+  theaterId: string,
+  now = new Date().toISOString(),
+): Showtime {
+  const { movieTitle, theaterName: _theater, ...source } = row;
+  void _theater;
+  return showtimeSchema.parse({
+    ...source,
+    id: randomUUID(),
+    movieId: randomUUID(),
+    theaterId,
+    movieTitle,
+    partnerTitle: movieTitle,
+    movieStatus: "draft",
+    status: "active",
+    lastUpdated: now,
+  });
 }
 export function compilePreview(
   rows: CsvRow[],
@@ -124,7 +145,7 @@ export function compilePreview(
         sourceRow: d.sourceRow,
         original: row,
         before: null,
-        after: null,
+        after: sourceDraft(row, metadata.theaterId, now),
         reason: d.reason,
         excluded: false,
       });
@@ -220,7 +241,14 @@ export function compilePreview(
   const safe = blockers.length
     ? entries.filter((e) => e.kind !== "archive")
     : entries;
-  return { ...metadata, entries: safe, blockers };
+  return {
+    ...metadata,
+    entries: safe,
+    blockers,
+    ...(entries.some((e) => e.kind === "ambiguous")
+      ? { existingShowtimes: snapshot }
+      : {}),
+  };
 }
 export function revisePreview(
   preview: Preview,
@@ -232,28 +260,109 @@ export function revisePreview(
     throw new AppError(400, "Edit each proposal once.");
   const movieStatuses = new Map<string, Showtime["movieStatus"]>();
   for (const edit of edits) {
-    const movieId = entries[edit.index]?.after?.movieId;
-    const status = edit.fields?.movieStatus;
-    if (!movieId || !status) continue;
-    if (movieStatuses.has(movieId) && movieStatuses.get(movieId) !== status)
-      throw new AppError(
-        400,
-        "Choose one review status for all showtimes of the same movie.",
-      );
-    movieStatuses.set(movieId, status);
-  }
-  for (const edit of edits) {
     const entry = entries[edit.index];
     if (!entry) throw new AppError(400, "Unknown preview entry.");
+    if (entry.kind === "ambiguous" && !entry.after && entry.original)
+      entry.after = sourceDraft(entry.original, preview.theaterId);
     if (edit.fields && Object.keys(edit.fields).length) {
-      if (!entry.after || !["add", "update", "unchanged"].includes(entry.kind))
+      if (!entry.after || entry.kind === "archive")
         throw new AppError(400, "This proposal cannot be edited.");
       entry.after = showtimeSchema.parse({ ...entry.after, ...edit.fields });
+    }
+    if (edit.resolution) {
+      if (entry.kind === "ambiguous") {
+        if (!entry.after)
+          throw new AppError(400, "This row has no editable source values.");
+        const draft = entry.after;
+        if (edit.resolution.kind === "match") {
+          const showtimeId = edit.resolution.showtimeId;
+          const before = snapshot.find(
+            (row) =>
+              row.id === showtimeId && row.theaterId === preview.theaterId,
+          );
+          if (!before)
+            throw new AppError(
+              400,
+              "Choose an existing screening from this theater.",
+            );
+          entry.before = before;
+          entry.after = showtimeSchema.parse({
+            ...draft,
+            id: before.id,
+            movieId: before.movieId,
+            movieTitle: before.movieTitle,
+            movieStatus: edit.fields?.movieStatus ?? before.movieStatus,
+          });
+        } else {
+          const catalog = [
+            ...new Map(
+              [
+                ...snapshot,
+                ...entries
+                  .filter(
+                    (other) =>
+                      other !== entry &&
+                      !other.excluded &&
+                      other.kind !== "ambiguous" &&
+                      other.after,
+                  )
+                  .map((other) => other.after!),
+              ].map((row) => [row.movieId, row]),
+            ).values(),
+          ];
+          const movies = catalog.filter(
+            (row) => nameKey(row.movieTitle) === nameKey(draft.partnerTitle),
+          );
+          if (movies.length > 1)
+            throw new AppError(
+              400,
+              "Movie title has multiple identities; select an existing screening instead.",
+            );
+          const movie = movies[0];
+          entry.before = null;
+          entry.after = showtimeSchema.parse({
+            ...draft,
+            id: snapshot.some((row) => row.id === draft.id)
+              ? randomUUID()
+              : draft.id,
+            movieId: movie?.movieId ?? draft.movieId,
+            movieTitle: movie?.movieTitle ?? draft.partnerTitle,
+            movieStatus:
+              edit.fields?.movieStatus ??
+              movie?.movieStatus ??
+              draft.movieStatus,
+          });
+        }
+        entry.kind = entry.before ? "update" : "add";
+        entry.reason = `${entry.reason.slice(0, 400)} Resolved by the reviewer.`;
+      } else if (
+        !(edit.resolution.kind === "new" && entry.kind === "add") &&
+        !(
+          edit.resolution.kind === "match" &&
+          entry.before?.id === edit.resolution.showtimeId
+        )
+      ) {
+        throw new AppError(
+          400,
+          "An existing proposal's identity cannot be changed.",
+        );
+      }
+    }
+    if (entry.after && entry.kind !== "ambiguous" && entry.kind !== "archive")
       entry.kind = !entry.before
         ? "add"
         : imported.every((key) => entry.before![key] === entry.after![key])
           ? "unchanged"
           : "update";
+    const movieId = entry.after?.movieId;
+    const status = edit.fields?.movieStatus;
+    if (movieId && status && entry.kind !== "ambiguous") {
+      if (movieStatuses.has(movieId) && movieStatuses.get(movieId) !== status)
+        throw new AppError(
+          400,
+          "Choose one review status for all showtimes of the same movie.",
+        );
+      movieStatuses.set(movieId, status);
     }
     entry.excluded = edit.excluded ?? entry.excluded;
   }

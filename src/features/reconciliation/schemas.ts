@@ -143,6 +143,7 @@ export const previewSchema = z
     personaId: idSchema,
     theaterId: idSchema,
     revision: z.number().int().min(0),
+    existingShowtimes: z.array(showtimeSchema).max(200).optional(),
     entries: z.array(entrySchema).max(300),
     blockers: z.array(z.string().max(512)).max(100),
     model: z.string().max(128),
@@ -169,6 +170,12 @@ export type Preview = z.infer<typeof previewSchema>;
 export const editSchema = z
   .object({
     index: z.number().int().min(0).max(299),
+    resolution: z
+      .discriminatedUnion("kind", [
+        z.object({ kind: z.literal("new") }).strict(),
+        z.object({ kind: z.literal("match"), showtimeId: idSchema }).strict(),
+      ])
+      .optional(),
     excluded: z.boolean().optional(),
     fields: fieldsSchema
       .omit({ partnerLastUpdated: true })

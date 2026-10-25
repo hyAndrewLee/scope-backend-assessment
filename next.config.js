@@ -5,6 +5,9 @@
 import "./src/env.js";
 
 /** @type {import("next").NextConfig} */
-const config = {};
+const config = {
+  // Run lint locally; deployment builds still enforce TypeScript correctness.
+  eslint: { ignoreDuringBuilds: true },
+};
 
 export default config;

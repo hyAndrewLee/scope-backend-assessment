@@ -48,7 +48,7 @@ Schema setup and seeding are explicit, not startup behavior; seeding refuses pop
 
 Named `#region` / `#endregion` comments for large sections. ESLint enforces statement spacing; Prettier enforces formatting. Region boundaries remain a manual readability decision.
 
-Run `bun run lint:fix` and `bun run format` to apply fixes. `bun run check` (also run by Vercel) rejects spacing or formatting violations.
+Run `bun run lint:fix` and `bun run format` to apply fixes. `bun run check` rejects spacing or formatting violations locally; deployment builds skip lint and Prettier.
 
 ## Checks and deployment
 
@@ -58,6 +58,6 @@ bun run eval:csv   # 37 deterministic CSV edge cases; no live AI required
 bun run build
 ```
 
-Import into Vercel; set the same server variables, with `APP_ORIGIN` matching the deployment URL. `vercel.json` configures Bun install, checks, and build. Initialize the hosted database separately.
+Import into Vercel; set the same server variables, with `APP_ORIGIN` matching the deployment URL. `vercel.json` configures Bun install and build. Initialize the hosted database separately.
 
 **Demo limits:** 256 KiB/100 CSV rows; at most 200 stored screenings per reconciliation, including archives. Previews are unsigned, temporary client state; confirmed schedule changes persist, but no approval-history log exists. Seeded format capabilities are inferred from starter data. Auditorium booking overlaps are not checked.
